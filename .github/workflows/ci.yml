@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Tests, lints, and the no_std build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: thumbv7em-none-eabihf
+
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      - name: no_std against a bare-metal target
+        # Verified rather than asserted. A crate that claims no_std and has
+        # never been built for a target without std is a crate claiming
+        # something nobody checked.
+        run: cargo build --release --target thumbv7em-none-eabihf
+      - run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+      - name: No floating point anywhere
+        # The property the crate exists for. A single f64 would make the
+        # results compiler-dependent, and the promise is that they are not.
+        run: |
+          if grep -nE '\bf32\b|\bf64\b' src/lib.rs | grep -v '^\s*//' | grep -v 'in `f64`'; then
+            echo "::error::floating point in a crate whose point is integer arithmetic"
+            exit 1
+          fi
+          echo "  no floating point"
+

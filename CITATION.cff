@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+title: "dy-wcet: worst-case response time in integer arithmetic"
+message: "If you use this software in your work, please cite it as below."
+type: software
+authors:
+  - family-names: "Yermakou"
+    given-names: "Denis"
+    email: "connect@axonos.org"
+    affiliation: "DY Research"
+abstract: >-
+  Response-time analysis for fixed-priority task sets, computed entirely in
+  integer arithmetic. Non-convergence returns an explicit unschedulable result
+  rather than a capped value, and every operation is checked so that overflow
+  cannot turn an unschedulable set into a schedulable-looking one.
+repository-code: "https://github.com/DYResearch/dy-wcet"
+version: "0.1.0"
+date-released: "2026-08-17"
+license: "Apache-2.0 OR MIT"
+keywords:
+  - real-time systems
+  - response-time analysis
+  - fixed-priority scheduling
+  - embedded
+

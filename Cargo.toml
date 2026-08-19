@@ -1,0 +1,19 @@
+[package]
+name = "dy-wcet"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "Apache-2.0 OR MIT"
+description = "Worst-case response time for a fixed-priority task set, computed in integer arithmetic that refuses rather than rounds."
+repository = "https://github.com/DYResearch/dy-wcet"
+homepage = "https://github.com/DYResearch"
+authors = ["Denis Yermakou <connect@axonos.org>"]
+keywords = ["real-time", "wcet", "scheduling", "no-std", "embedded"]
+categories = ["embedded", "no-std", "algorithms"]
+readme = "README.md"
+
+[dependencies]
+
+[features]
+default = []
+
