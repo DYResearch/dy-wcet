@@ -123,6 +123,24 @@ Four of those cases are worth reading even if you never use this crate:
 | [`the_deadline_boundary_from_both_sides`](tests/on_paper.rs) | One microsecond changes both the sum and the activation count at once |
 | [`a_deadline_beyond_the_period_is_permitted`](tests/on_paper.rs) | An implementation assuming `R ≤ T` is right on most sets |
 
+## Checked against a second implementation
+
+The AxonOS kernel carries its own response-time analysis, written months
+earlier for a different reason. On a shared task set the two agree — and the
+first attempt at that comparison is the useful part.
+
+It used a set whose execution times summed to less than the shortest period.
+Every ceiling in the recurrence was 1, the fixed point was the first value
+tried, and the agreement was about addition rather than about analysis. The set
+now used takes three iterations on its lowest-priority task, with the
+activation count changing between them.
+
+Full derivation: [`docs/CROSSCHECK.md`](docs/CROSSCHECK.md).
+
+Both implementations are by the same author, so agreement is not
+independence — a shared misreading of the recurrence agrees with itself
+perfectly. That is why every figure there is derived rather than asserted.
+
 ## What it does not do
 
 **It does not measure.** Execution times are inputs. If they came from a
@@ -170,4 +188,3 @@ Denis Yermakou · [connect@axonos.org](mailto:connect@axonos.org)
 © 2026 Denis Yermakou
 
 </div>
-
