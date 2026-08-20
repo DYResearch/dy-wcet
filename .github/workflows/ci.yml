@@ -24,6 +24,21 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+      - name: The paper tests carry their derivations
+        # A test asserting a number without showing where the number came from
+        # pins the implementation rather than the analysis — and if the
+        # implementation is wrong, such a test protects the bug.
+        run: |
+          python3 - <<'PY'
+          import re, sys, pathlib
+          t = pathlib.Path("tests/on_paper.rs").read_text(encoding="utf-8")
+          fns = re.findall(r"((?:///[^\n]*\n|\s*)*)#\[test\]\s*\nfn (\w+)", t)
+          bad = [n for doc, n in fns if "→" not in doc and "R = " not in doc]
+          if bad:
+              print(f"::error::these tests assert a value without deriving it: {bad}")
+              sys.exit(1)
+          print(f"  {len(fns)} paper tests, each with its derivation")
+          PY
       - name: no_std against a bare-metal target
         # Verified rather than asserted. A crate that claims no_std and has
         # never been built for a target without std is a crate claiming
@@ -42,4 +57,5 @@ jobs:
             exit 1
           fi
           echo "  no floating point"
+
 
