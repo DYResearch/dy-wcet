@@ -13,7 +13,7 @@ abstract: >-
   rather than a capped value, and every operation is checked so that overflow
   cannot turn an unschedulable set into a schedulable-looking one.
 repository-code: "https://github.com/DYResearch/dy-wcet"
-version: "0.1.0"
+version: "0.1.1"
 date-released: "2026-08-17"
 license: "Apache-2.0 OR MIT"
 keywords:
@@ -21,4 +21,5 @@ keywords:
   - response-time analysis
   - fixed-priority scheduling
   - embedded
+
 

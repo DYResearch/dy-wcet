@@ -259,3 +259,73 @@ fn the_task_limit_is_enforced_rather_than_overrun() {
         .is_err());
     assert!(s.is_schedulable());
 }
+
+/// Overflow is caught before the iteration cap, not by it.
+///
+/// ```text
+/// T1  C = u64::MAX/2   T = 1   D = u64::MAX
+/// T2  C = u64::MAX/2   T = 2   D = u64::MAX
+///
+/// R(T2):
+///   R = 9223372036854775807   ⌈R/1⌉ · C  →  overflow on the first multiply
+/// ```
+///
+/// The deadline is the largest value a `u64` holds, so the `next > deadline`
+/// exit can never fire and the iteration cap is four orders of magnitude away.
+/// What stops it is `checked_mul` on the very first interference term.
+///
+/// This case exists because an external audit asked whether the cap or the
+/// checked arithmetic wins the race. The checked arithmetic wins, which is the
+/// right answer: a cap returning `Unschedulable` after ten thousand rounds and
+/// an overflow returning it immediately are the same verdict, but only one of
+/// them is a reason.
+#[test]
+fn overflow_beats_the_iteration_cap_to_the_answer() {
+    let s = set(&[
+        (u64::MAX / 2, 1, u64::MAX, 0),
+        (u64::MAX / 2, 2, u64::MAX, 0),
+    ]);
+    assert_eq!(s.response_of(1), Response::Unschedulable);
+}
+
+/// A rejection says what was wrong, not which variant it was.
+///
+/// No derivation to show: this is an ergonomic check rather than an arithmetic
+/// one. It is here because a caller integrating this into a `std` program
+/// otherwise logs `Full` and learns nothing from it.
+#[test]
+fn rejections_and_responses_describe_themselves() {
+    extern crate std;
+    use std::string::ToString;
+
+    let mut s = TaskSet::new();
+    let e = s
+        .push(Task {
+            wcet_us: 1,
+            period_us: 0,
+            deadline_us: 1,
+            blocking_us: 0,
+        })
+        .unwrap_err();
+    assert!(e.to_string().contains("period is zero"));
+
+    let e = s
+        .push(Task {
+            wcet_us: 500,
+            period_us: 1000,
+            deadline_us: 400,
+            blocking_us: 0,
+        })
+        .unwrap_err();
+    assert!(e.to_string().contains("exceeds the deadline"));
+
+    s.push(Task {
+        wcet_us: 100,
+        period_us: 400,
+        deadline_us: 400,
+        blocking_us: 0,
+    })
+    .unwrap();
+    assert_eq!(s.response_of(0).to_string(), "100 us");
+    assert_eq!(Response::Unschedulable.to_string(), "no bound exists");
+}

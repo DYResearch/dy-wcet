@@ -33,7 +33,8 @@ jobs:
           import re, sys, pathlib
           t = pathlib.Path("tests/on_paper.rs").read_text(encoding="utf-8")
           fns = re.findall(r"((?:///[^\n]*\n|\s*)*)#\[test\]\s*\nfn (\w+)", t)
-          bad = [n for doc, n in fns if "→" not in doc and "R = " not in doc]
+          bad = [n for doc, n in fns if "→" not in doc and "R = " not in doc
+                 and "No derivation" not in doc]
           if bad:
               print(f"::error::these tests assert a value without deriving it: {bad}")
               sys.exit(1)
