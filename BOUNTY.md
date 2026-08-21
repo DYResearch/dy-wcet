@@ -46,6 +46,28 @@ sum below the shortest period never activates any task twice, every ceiling is
 disproves nothing, and the write-up of how I discovered that is
 [here](https://github.com/DYResearch/dy-wcet/blob/main/docs/CROSSCHECK.md).
 
+## Which version
+
+Claims are judged against the **latest published tag** at the moment you send
+them. The crate is small and changes rarely, and if a release lands between
+your discovery and your email, say which tag you were on — a counterexample
+that was valid an hour ago does not stop being interesting because I pushed a
+commit.
+
+If a release **fixes** the behaviour you found, that is still a win: the fix is
+credited to you and the pool pays. Finding it first is the achievement, not
+finding it before I did.
+
+## These rules do not change retroactively
+
+The version of this file that was current when you started is the one your
+claim is judged against. Its history is public in this repository, so you can
+prove what it said — I cannot quietly add a condition after seeing a
+submission, which is the failure mode of every informal bounty.
+
+If the rules change, the change applies to claims sent after it, and the reason
+is written in the commit message.
+
 ## What does not count
 
 **A disagreement with the model.** No jitter term, no cache, no pipeline, no
@@ -59,6 +81,32 @@ is wrong while looking right.
 **An argument.** Bring arithmetic. If your derivation and mine disagree, one of
 them contains a step that does not add up, and finding which is not a matter of
 opinion.
+
+## How to submit
+
+Email **connect@axonos.org**, or open an issue if you would rather it be
+public from the start. Either is fine; the issue is faster and gets your name
+on it sooner.
+
+What to include:
+
+```
+Tag:        v0.1.1
+Task set:   C, T, D, B per task, highest priority first
+Crate says: Bounded(1830)  /  Unschedulable
+You say:    Bounded(1710)
+Derivation: R = 900   ⌈900/1000⌉·120 + ⌈900/4000⌉·642  →  1710
+            R = 1710  ⌈1710/1000⌉·120 + ...            →  1830
+            ...
+```
+
+The derivation is the part that matters. A set and a number without the
+iterations is a claim I would have to reconstruct before I could check it, and
+reconstructing somebody else's reasoning is how a disagreement about
+arithmetic turns into a disagreement about intent.
+
+If you would rather not be named, say so and the entry reads *anonymous* with
+the date.
 
 ## Who decides
 
@@ -124,6 +172,25 @@ size of.</sub>
 | Date | Set | Verdict | Why |
 |:--|:--|:--|:--|
 | — | *none yet* | — | — |
+
+## Payment, and what happens if the pool is small
+
+**Within 72 hours** of a claim being confirmed, to a Dogecoin address you give
+me, with the transaction hash published in this file beside your entry.
+
+The pool is whatever the address holds at the moment a claim is confirmed. If
+that is a small amount, it is a small amount — I will say so plainly rather
+than pretend otherwise, and the finding still gets published under your name
+with the derivation intact.
+
+Which is the honest position: **the credit is the durable part.** A repository
+that records who broke it, with their reasoning, outlives whatever the balance
+happened to be that week.
+
+If two valid claims arrive for the same defect, the earlier timestamp takes the
+pool and both are published. If they arrive within an hour of each other, it is
+split, because an hour is inside the noise of when somebody happened to hit
+send.
 
 ## Why I am doing this
 
