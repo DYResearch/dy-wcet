@@ -141,6 +141,20 @@ Both implementations are by the same author, so agreement is not
 independence — a shared misreading of the recurrence agrees with itself
 perfectly. That is why every figure there is derived rather than asserted.
 
+## There is money on this being wrong
+
+I wrote the crate and I wrote its tests, which is the one problem I cannot
+solve from inside: a test written by whoever wrote the bug asserts what the
+implementation produces.
+
+So there is a pool, in Dogecoin, for the first task set where this returns a
+bound the recurrence does not support — derived, reproducible, on a set that
+actually exercises the recurrence. No adjudicator: your derivation and the
+crate's output go side by side, and one of them contains a step that does not
+add up.
+
+**[The rules, the conditions, and the address](BOUNTY.md)**
+
 ## What it does not do
 
 **It does not measure.** Execution times are inputs. If they came from a
