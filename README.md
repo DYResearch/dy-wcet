@@ -2,6 +2,23 @@
 
 # dy-wcet
 
+## Technical Case Studies
+
+### Embassy #6528 — RP2350 Lost-Alarm Timing Analysis
+Source-level analysis of an intermittent RP2350 `embassy-time` failure involving
+hardware alarm arming, timer-queue liveness, and potentially unbounded timer
+response time.
+
+[Read the case study](case-studies/embassy-6528.md)
+
+## Embedded Timing Audit
+**Fixed scope: $70 · async · written delivery** — one reproducible embedded
+timing, concurrency, scheduler, race-condition, or WCET problem. Larger work
+quoted separately.
+
+[Audit scope](AUDIT.md)
+
+
 ### Worst-case response time, in arithmetic that refuses rather than rounds.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/DYResearch/dy-wcet/ci.yml?branch=main&style=flat-square&label=CI&labelColor=0e141d)](https://github.com/DYResearch/dy-wcet/actions)
