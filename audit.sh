@@ -17,9 +17,11 @@
 REPO="."
 RUN_CARGO=1
 RUN_NET=0
+PRERELEASE=0
 for a in "$@"; do
   case "$a" in
     --no-cargo) RUN_CARGO=0 ;;
+    --pre-release) PRERELEASE=1 ;;
     --net)      RUN_NET=1 ;;
     -h|--help)  sed -n '2,18p' "$0"; exit 0 ;;
     *)          REPO="$a" ;;
@@ -345,15 +347,30 @@ fi
 sect "H · Git"
 
 if [ -d .git ]; then
+  # Before a release commit these two cannot pass: the files were written a
+  # moment ago and the tag goes on afterwards. A check that cannot pass at the
+  # point it runs is noise, not a warning, so the release path says which
+  # phase it is in and this reports accordingly.
   dirty=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-  [ "$dirty" -eq 0 ] && pass "working tree is clean" || warn "$dirty uncommitted change(s)"
+  if [ "$dirty" -eq 0 ]; then
+    pass "working tree is clean"
+  elif [ "$PRERELEASE" = "1" ]; then
+    note "$dirty file(s) staged for the release commit, as expected at this point"
+  else
+    warn "$dirty uncommitted change(s)"
+  fi
   # A shallow clone carries no tags. Reporting "no tags" from one is a false
   # finding, and this checker produced exactly that on 2026-08-27.
   SHALLOW=$(git rev-parse --is-shallow-repository 2>/dev/null)
   tag=$(git describe --tags --abbrev=0 2>/dev/null)
   if [ -n "$tag" ]; then
-    [ "${tag#v}" = "$CVER" ] && pass "newest tag $tag matches Cargo.toml $CVER" \
-      || warn "newest tag $tag, Cargo.toml $CVER — expected before a release commit"
+    if [ "${tag#v}" = "$CVER" ]; then
+      pass "newest tag $tag matches Cargo.toml $CVER"
+    elif [ "$PRERELEASE" = "1" ]; then
+      note "newest tag $tag, manifest $CVER — v$CVER goes on after the commit"
+    else
+      warn "newest tag $tag, Cargo.toml $CVER"
+    fi
   elif [ "$SHALLOW" = "true" ]; then
     note "shallow clone: tags are absent here, which says nothing about the remote"
     note "git fetch --tags --unshallow to check"
