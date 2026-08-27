@@ -94,8 +94,13 @@ sect "B · Every stated number, against the source that backs it"
 UNIT=$(awk '/^mod tests|^#\[cfg\(test\)\]/,0' src/lib.rs 2>/dev/null | grep -c '#\[test\]' | head -1)
 UNIT=${UNIT:-0}
 INTEG=$(cnt '#\[test\]' tests/on_paper.rs)
-TOTAL=$((UNIT+INTEG))
-note "counted: $UNIT unit · $INTEG integration · $TOTAL total"
+OTHER=0
+for f in tests/*.rs; do
+  case "$f" in tests/on_paper.rs|"tests/*.rs") continue ;; esac
+  OTHER=$(( OTHER + $(cnt '#\[test\]' "$f") ))
+done
+TOTAL=$((UNIT+INTEG+OTHER))
+note "counted: $UNIT unit · $INTEG on-paper · $OTHER other integration · $TOTAL total"
 
 for pair in "$UNIT unit" "$INTEG integration"; do
   set -- $pair; n=$1; kind=$2
@@ -182,20 +187,17 @@ done
 CHK=$(cnt 'checked_(add|mul|div|sub)' src/lib.rs)
 note "checked arithmetic call sites: $CHK"
 
-UNSCH=$(cntf 'Response::Unschedulable,' src/lib.rs)
-UNSCH=$(( $(cntf 'return Response::Unschedulable' src/lib.rs) + $(grep -cE '^\s*Response::Unschedulable\s*$' src/lib.rs 2>/dev/null | head -1) ))
+UNSCH=$(cntf 'Response::Unbounded(' src/lib.rs)
 note "Response::Unschedulable is returned from $UNSCH distinct sites"
 # The doc for Unschedulable must enumerate its causes, not gesture at them.
 # Until 0.1.2 it named two of four, and no test could have caught that.
-DOCCAUSES=$(awk '/enum Response/{exit} /Unschedulable/{f=1} f' src/lib.rs 2>/dev/null | true)
-DOCCAUSES=$(awk '/^pub enum Response/,/^}/' src/lib.rs 2>/dev/null \
-            | grep -cE '^\s*/// *[0-9]+\.' | head -1)
+DOCCAUSES=$(awk '/^pub enum Unbounded/,/^}/' src/lib.rs 2>/dev/null | grep -cE '^\s*[A-Z][A-Za-z]*[,(]' | head -1)
 DOCCAUSES=${DOCCAUSES:-0}
-note "the Unschedulable doc enumerates $DOCCAUSES cause(s)"
+note "Unbounded distinguishes $DOCCAUSES reason(s); Unbounded is constructed at $UNSCH sites"
 if [ "$DOCCAUSES" -ge 4 ]; then
-  pass "the Unschedulable doc enumerates its causes rather than summarising them"
+  pass "an unbounded answer names which of $DOCCAUSES things went wrong"
 else
-  fail "Unschedulable is returned from $UNSCH sites and the doc enumerates $DOCCAUSES cause(s)"
+  fail "Unbounded carries only $DOCCAUSES reason(s)"
   grep -nE 'return Response::Unschedulable|^\s*Response::Unschedulable\s*$' src/lib.rs | sed 's/^/        /'
   note "a cause that is real but undocumented is the defect class this repo exists for"
 fi

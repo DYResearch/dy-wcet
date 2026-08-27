@@ -8,13 +8,15 @@ authors:
     email: "connect@axonos.org"
     affiliation: "DY Research"
 abstract: >-
-  Response-time analysis for fixed-priority task sets, computed entirely in
-  integer arithmetic. Non-convergence returns an explicit unschedulable result
-  rather than a capped value, and every operation is checked so that overflow
-  cannot turn an unschedulable set into a schedulable-looking one.
+  Response-time analysis for fixed-priority task sets with release jitter and
+  blocking, computed entirely in integer arithmetic. Non-convergence returns an
+  explicit unbounded result rather than a capped value, a bound above the
+  deadline is reported with its value rather than discarded, and every
+  operation is checked so that overflow cannot turn an unschedulable set into a
+  schedulable-looking one. Includes Audsley's optimal priority assignment.
 repository-code: "https://github.com/DYResearch/dy-wcet"
 url: "https://github.com/DYResearch/dy-wcet"
-version: "0.1.2"
+version: "1.2.1"
 date-released: "2026-08-27"
 license: "Apache-2.0 OR MIT"
 keywords:
@@ -22,4 +24,5 @@ keywords:
   - response-time analysis
   - fixed-priority scheduling
   - worst-case execution time
+  - release jitter
   - embedded

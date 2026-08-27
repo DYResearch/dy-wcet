@@ -1,5 +1,87 @@
 # Changelog
 
+## [1.2.1] — 2026-08-27
+
+The first release with a frozen API, and the first that analyses task sets
+real systems actually have. Release jitter is in the recurrence, an
+unschedulable answer says which of four things went wrong, and the crate will
+search for a priority ordering rather than only grading the one you brought.
+
+### On the version number
+
+This jumps from 0.1.2 with no 1.0.0, 1.1.0 or 1.2.0 behind it, and a project
+that grades its own numbers should not leave that unexplained. There were no
+such releases. The number was chosen to mark an API commitment rather than to
+imply a history, and the tags in this repository are the record: `v0.1.0`,
+`v0.1.1`, `v0.1.2`, then this. Nothing is missing; nothing was withdrawn.
+
+From here, `Task`, `TaskSet`, `Response` and `Unbounded` are stable. Breaking
+them again means 2.0.0.
+
+### Added
+- **Release jitter.** `Task::jitter_us` enters the recurrence in its extended
+  form, `wⁿ⁺¹ = C + B + Σ ⌈(wⁿ + Jⱼ)/Tⱼ⌉ · Cⱼ`, with `R = w + J`. Until now
+  jitter was listed as outside the model, which meant most real task sets were
+  outside it too. A test pins that zero jitter reproduces Joseph and Pandya
+  exactly, and another shows 300 µs of upstream jitter buying a whole extra
+  preemption that the old analysis reported away.
+- **`Unbounded`, replacing the single `Unschedulable`.** Four reasons, told
+  apart: `NonConvergent`, `ExceedsDeadline(u64)`, `Overflow`, `NoSuchTask`.
+  The second carries the number. A task that converges at 400 µs against a
+  350 µs deadline now says so, and by how much, where before it said nothing.
+- **`TaskSet::optimal_priority_order`** — Audsley's assignment. If any
+  fixed-priority ordering of the set meets every deadline, this finds one. It
+  returns the ordering rather than applying it, because a set that silently
+  reordered itself would hide the assumption its caller arrived with.
+- **`TaskSet::slack_of` and `max_wcet_increase`** — sensitivity. How much
+  headroom a task has, and how much execution time it could gain before
+  something breaks. The search re-analyses the whole set, because raising one
+  execution time can sink a lower-priority task, and an answer that checked
+  only the task being changed would be wrong in the flattering direction.
+- **`Task::new` with chaining setters**, and `Task::name`. Construction no
+  longer means remembering the order of four `u64` fields.
+- **`TaskSet::utilisation_through`, `liu_layland_bound_ppm`,
+  `passes_utilisation_bound`, `first_failure`, `get`, `iter`.**
+- **Eight property tests** over roughly twenty-eight thousand generated task
+  sets, with no dependency added: the generator is thirty lines of linear
+  congruence, seeded, so a failure reproduces anywhere. They check that a
+  response never falls below the work it contains, that jitter never shortens
+  one, that Audsley's answer actually holds, and that sensitivity reports the
+  last value that fits rather than one past it.
+- **Five Kani harnesses** in `kani/`: a bounded answer never exceeds its
+  deadline, every unbounded variant fails every comparison, the recurrence
+  terminates without panicking, a lone task pays only for itself, and an index
+  past the end is named rather than guessed.
+
+### Changed
+- **Convergence is decided before the loop runs**, from utilisation through the
+  priority level, rather than discovered by exhausting the iteration cap. The
+  cap remains as defence against a future change to that decision.
+- **The search now runs to the fixed point even past the deadline.** That is
+  what lets `ExceedsDeadline` carry a real number. Earlier versions stopped at
+  the deadline and could not have said how far past it the answer lay.
+
+### Removed
+- `Response::Unschedulable`. Match on `Response::Unbounded(_)` for the same
+  meaning, or on the reason for more.
+
+### Migrating
+```rust
+// 0.1.x
+let t = Task { wcet_us: 200, period_us: 1000, deadline_us: 1000, blocking_us: 20 };
+match set.response_of(1) {
+    Response::Bounded(r) => r,
+    Response::Unschedulable => panic!(),
+};
+
+// 1.2.1
+let t = Task::new(200, 1000).blocking(20);
+match set.response_of(1) {
+    Response::Bounded(r) => r,
+    Response::Unbounded(why) => panic!("{why}"),
+};
+```
+
 ## [0.1.2] — 2026-08-27
 
 Nothing here changes what the crate computes. Four defects are fixed, and every

@@ -1,331 +1,258 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // SPDX-FileCopyrightText: 2026 Denis Yermakou <connect@axonos.org>
-// Part of DY Research — https://github.com/DYResearch
 
-//! Task sets whose answers can be checked on paper.
+//! Cases whose expected value is derived above them, iteration by iteration.
 //!
-//! The unit tests in `src/lib.rs` check that the implementation does what its
-//! author intended. These check something different and harder: that what its
-//! author intended is what the analysis says.
-//!
-//! Every expected value here is derived in the comment above it, iteration by
-//! iteration, so a reader who distrusts the code can settle the question with
-//! a pencil instead of running anything.
-//!
-//! That distinction matters more than it sounds. While writing this file I
-//! stated the answer to `three_tasks_settling_at_six` as 7 from memory, and
-//! the arithmetic says 6. The recurrence is short enough that being confident
-//! about it is easy and being right about it is not — which is the entire
-//! reason this crate exists.
+//! A test asserting a number without showing where the number came from pins
+//! the implementation rather than the analysis, and if the implementation is
+//! wrong such a test protects the bug. Every expectation here can be settled
+//! with a pencil.
 
-use dy_wcet::{Response, Task, TaskSet};
+use dy_wcet::{Rejected, Response, Task, TaskSet, Unbounded, MAX_TASKS};
 
-fn set(rows: &[(u64, u64, u64, u64)]) -> TaskSet {
-    let mut s = TaskSet::new();
-    for &(wcet_us, period_us, deadline_us, blocking_us) in rows {
-        s.push(Task {
-            wcet_us,
-            period_us,
-            deadline_us,
-            blocking_us,
-        })
-        .expect("the fixtures in this file are all admissible");
-    }
-    s
-}
-
-/// Three tasks, priority by period, and the fixed point is 6.
-///
 /// ```text
-/// T1  C=1  T=4      T2  C=2  T=6      T3  C=2  T=10
-///
-/// R(T3):
-///   R = 2   ⌈2/4⌉·1 + ⌈2/6⌉·2 = 1 + 2  →  5
-///   R = 5   ⌈5/4⌉·1 + ⌈5/6⌉·2 = 2 + 2  →  6
-///   R = 6   ⌈6/4⌉·1 + ⌈6/6⌉·2 = 2 + 2  →  6   ← fixed point
+/// C = 2, B = 0, higher: (1, 4) and (2, 6)
+/// R = 2   ⌈2/4⌉·1 + ⌈2/6⌉·2 = 1 + 2  →  5
+/// R = 5   ⌈5/4⌉·1 + ⌈5/6⌉·2 = 2 + 2  →  6
+/// R = 6   ⌈6/4⌉·1 + ⌈6/6⌉·2 = 2 + 2  →  6   ← fixed point
 /// ```
-///
-/// The step worth watching is the last one. At R = 6, T2 has had exactly one
-/// activation — `⌈6/6⌉ = 1`, not 2 — because a task released at time 6 does
-/// not interfere with a response that completes at 6. An implementation that
-/// rounds up here instead of using a true ceiling reports 8, and 8 is a number
-/// that will pass most tests somebody writes for it.
+/// Six, not seven. A task released at time 6 does not interfere with a
+/// response that completes at 6, and the arithmetic says so even when memory
+/// does not.
 #[test]
 fn three_tasks_settling_at_six() {
-    let s = set(&[(1, 4, 4, 0), (2, 6, 6, 0), (2, 10, 10, 0)]);
-    assert_eq!(s.response_of(0), Response::Bounded(1));
-    assert_eq!(s.response_of(1), Response::Bounded(3));
+    let mut s = TaskSet::new();
+    s.push(Task::new(1, 4)).unwrap();
+    s.push(Task::new(2, 6)).unwrap();
+    s.push(Task::new(2, 20)).unwrap();
     assert_eq!(s.response_of(2), Response::Bounded(6));
-    assert!(s.is_schedulable());
 }
 
-/// A deadline shorter than the period, which is where rate-monotonic
-/// reasoning stops applying.
-///
 /// ```text
-/// T1  C=2  T=5  D=5        T2  C=3  T=8  D=4
-///
-/// R(T2):
-///   R = 3   ⌈3/5⌉·2 = 2  →  5
-///   5 > D = 4  →  unschedulable
+/// C = 300, D = 350, T = 2000, higher: (100, 400)
+/// R = 300   ⌈300/400⌉·100 = 100  →  400
+/// R = 400   ⌈400/400⌉·100 = 100  →  400   ← fixed point, and 400 > 350
 /// ```
-///
-/// Utilisation is 0.4 + 0.375 = 0.775, comfortably below one, and a
-/// utilisation-based test would call this schedulable. It is not. Response
-/// time is the only thing that answers the question, and this is the smallest
-/// set that shows why.
+/// Utilisation is 100/400 + 300/2000 = 0.4, and the task still misses. Any
+/// test that reads utilisation alone calls this set safe.
 #[test]
 fn a_deadline_shorter_than_the_period_can_fail_at_low_utilisation() {
-    let s = set(&[(2, 5, 5, 0), (3, 8, 4, 0)]);
-    assert_eq!(s.response_of(1), Response::Unschedulable);
-    assert!(!s.is_schedulable());
-    // The point of the case: utilisation says nothing useful here.
-    assert_eq!(s.utilisation_ppm(), Some(775_000));
+    let mut s = TaskSet::new();
+    s.push(Task::new(100, 400)).unwrap();
+    s.push(Task::new(300, 2000).deadline(350)).unwrap();
+    assert_eq!(
+        s.response_of(1),
+        Response::Unbounded(Unbounded::ExceedsDeadline(400))
+    );
+    assert_eq!(s.utilisation_ppm(), Some(400_000));
 }
 
-/// Utilisation of exactly one, which is schedulable and often assumed not to
-/// be.
-///
 /// ```text
-/// T1  C=1  T=2        T2  C=1  T=2
-///
-/// R(T2):
-///   R = 1   ⌈1/2⌉·1 = 1  →  2
-///   R = 2   ⌈2/2⌉·1 = 1  →  2   ← fixed point, and exactly the deadline
+/// (2, 4) and (2, 4): U = 0.5 + 0.5 = 1.0 exactly
+/// R = 2   ⌈2/4⌉·2 = 2  →  4
+/// R = 4   ⌈4/4⌉·2 = 2  →  4   ← fixed point, and 4 = D
 /// ```
-///
-/// The processor is busy every microsecond and no deadline is missed. An
-/// implementation using a strict inequality against the deadline reports
-/// failure here.
+/// Full utilisation converges and every deadline is met. An implementation
+/// testing `U < 1` with a strict inequality reports failure here.
 #[test]
 fn full_utilisation_is_schedulable_when_it_lands_exactly() {
-    let s = set(&[(1, 2, 2, 0), (1, 2, 2, 0)]);
-    assert_eq!(s.response_of(1), Response::Bounded(2));
-    assert!(s.is_schedulable());
+    let mut s = TaskSet::new();
+    s.push(Task::new(2, 4)).unwrap();
+    s.push(Task::new(2, 4)).unwrap();
     assert_eq!(s.utilisation_ppm(), Some(1_000_000));
+    assert_eq!(s.response_of(1), Response::Bounded(4));
 }
 
-/// Blocking longer than the deadline it applies to.
-///
 /// ```text
-/// T1  C=1  T=10  D=10       T2  C=2  T=20  D=5  B=10
-///
-/// R(T2):
-///   R⁰ = C + B = 2 + 10 = 12
-///   12 > D = 5  →  unschedulable, before interference is even considered
+/// C = 10, B = 500, D = 400, no higher priority tasks
+/// R = 10 + 500 = 510   no interference  →  510   ← fixed point, 510 > 400
 /// ```
-///
-/// A task that can be held up for 10 µs cannot meet a 5 µs deadline whatever
-/// else is true. The first iteration establishes it.
+/// Blocking is not interference and it is not scaled by anything. It is added
+/// once, and on its own it can sink a task with no preemption at all.
 #[test]
 fn blocking_alone_can_exceed_a_deadline() {
-    let s = set(&[(1, 10, 10, 0), (2, 20, 5, 10)]);
-    assert_eq!(s.response_of(1), Response::Unschedulable);
+    let mut s = TaskSet::new();
+    s.push(Task::new(10, 1000).deadline(400).blocking(500))
+        .unwrap();
+    assert_eq!(
+        s.response_of(0),
+        Response::Unbounded(Unbounded::ExceedsDeadline(510))
+    );
 }
 
-/// A zero-execution task at higher priority, which is admissible and must not
-/// spin.
-///
 /// ```text
-/// T1  C=0  T=10  D=10       T2  C=5  T=20  D=20
-///
-/// R(T2):
-///   R = 5   ⌈5/10⌉·0 = 0   →  5   ← fixed point on the first iteration
+/// higher: (0, 5) — zero execution time
+/// R = 7   ⌈7/5⌉·0 = 0  →  7   ← fixed point on the first iteration
 /// ```
-///
-/// `push` accepts a zero-execution task: zero work in zero time is degenerate
-/// but coherent, and refusing it would reject a valid model of a hardware
-/// event that costs nothing. The recurrence must still terminate, and it does
-/// — the interference term is zero, so the first value is already the fixed
-/// point. An implementation that iterates until the value *changes* rather
-/// than until it stops changing spins here forever.
+/// A task with no execution contributes no interference, so the window never
+/// grows and the loop exits immediately. The iteration cap is not what stops
+/// this, which is worth pinning: the comment in `response_of` once claimed it
+/// was, and the claim was wrong.
 #[test]
 fn a_zero_execution_task_terminates_rather_than_spinning() {
-    let s = set(&[(0, 10, 10, 0), (5, 20, 20, 0)]);
-    assert_eq!(s.response_of(1), Response::Bounded(5));
+    let mut s = TaskSet::new();
+    s.push(Task::new(0, 5)).unwrap();
+    s.push(Task::new(7, 100)).unwrap();
+    assert_eq!(s.response_of(1), Response::Bounded(7));
 }
 
-/// The boundary, from both sides, one microsecond apart.
-///
 /// ```text
-/// T1  C=100  T=400          T2  C=?  T=1000  D=400
-///
-/// C = 299:  R = 299   ⌈299/400⌉·100 = 100  →  399  ← fixed point, pass
-/// C = 300:  R = 300   ⌈300/400⌉·100 = 100  →  400  ← fixed point, exactly
-/// C = 301:  R = 301   ⌈301/400⌉·100 = 100  →  401
-///           R = 401   ⌈401/400⌉·100 = 200  →  501  >  D = 400, fail
+/// higher (100, 400), lower C = 200, T = 1000
+/// R = 200   ⌈200/400⌉·100 = 100  →  300
+/// R = 300   ⌈300/400⌉·100 = 100  →  300   ← fixed point
 /// ```
-///
-/// At C = 300 the response lands on the deadline and the interference term is
-/// still one activation, because `⌈400/400⌉ = 1`. One microsecond more and
-/// both change at once: the sum passes the deadline and a second activation
-/// appears. Off-by-one errors in this analysis hide precisely here.
+/// At D = 300 the task meets its deadline; at D = 299 it does not, and the
+/// same single microsecond changes both the sum and nothing else.
 #[test]
 fn the_deadline_boundary_from_both_sides() {
-    let below = set(&[(100, 400, 400, 0), (299, 1000, 400, 0)]);
-    assert_eq!(below.response_of(1), Response::Bounded(399));
+    let mut fits = TaskSet::new();
+    fits.push(Task::new(100, 400)).unwrap();
+    fits.push(Task::new(200, 1000).deadline(300)).unwrap();
+    assert_eq!(fits.response_of(1), Response::Bounded(300));
 
-    let exact = set(&[(100, 400, 400, 0), (300, 1000, 400, 0)]);
-    assert_eq!(exact.response_of(1), Response::Bounded(400));
-    assert!(exact.is_schedulable());
-
-    let above = set(&[(100, 400, 400, 0), (301, 1000, 400, 0)]);
-    assert_eq!(above.response_of(1), Response::Unschedulable);
-    assert!(!above.is_schedulable());
+    let mut misses = TaskSet::new();
+    misses.push(Task::new(100, 400)).unwrap();
+    misses.push(Task::new(200, 1000).deadline(299)).unwrap();
+    assert_eq!(
+        misses.response_of(1),
+        Response::Unbounded(Unbounded::ExceedsDeadline(300))
+    );
 }
 
-/// The same set, computed a thousand times, byte-identical every time.
+/// ```text
+/// C = 200, T = 1000, D = 1500 — a deadline beyond the period
+/// R = 200   ⌈200/400⌉·100 = 100  →  300
+/// R = 300   ⌈300/400⌉·100 = 100  →  300   ← fixed point
+/// ```
+/// An implementation that assumes `R ≤ T`, or that clamps the deadline to the
+/// period, is right on most sets and wrong on this one.
+#[test]
+fn a_deadline_beyond_the_period_is_permitted() {
+    let mut s = TaskSet::new();
+    s.push(Task::new(100, 400)).unwrap();
+    s.push(Task::new(200, 1000).deadline(1500)).unwrap();
+    assert_eq!(s.response_of(1), Response::Bounded(300));
+}
+
+/// ```text
+/// higher (100, 400) with J = 300, lower C = 200, T = 2000, D = 2000
+/// w = 200   ⌈(200+300)/400⌉·100 = 2·100 = 200  →  400
+/// w = 400   ⌈(400+300)/400⌉·100 = 2·100 = 200  →  400   ← fixed point
+/// ```
+/// Without the jitter term the same set settles at 300. Three hundred
+/// microseconds of release jitter on the high-priority task costs the low one
+/// a whole extra preemption, and an analysis with no `J` reports the flattering
+/// number.
+#[test]
+fn jitter_upstream_buys_a_whole_extra_preemption() {
+    let mut with_jitter = TaskSet::new();
+    with_jitter.push(Task::new(100, 400).jitter(300)).unwrap();
+    with_jitter.push(Task::new(200, 2000)).unwrap();
+    assert_eq!(with_jitter.response_of(1), Response::Bounded(400));
+
+    let mut without = TaskSet::new();
+    without.push(Task::new(100, 400)).unwrap();
+    without.push(Task::new(200, 2000)).unwrap();
+    assert_eq!(without.response_of(1), Response::Bounded(300));
+}
+
+/// ```text
+/// C = 200, T = 1000, J = 40, higher (100, 400) with J = 0
+/// w = 200   ⌈200/400⌉·100 = 100  →  300
+/// w = 300   ⌈300/400⌉·100 = 100  →  300   ← fixed point
+/// R = w + J = 300 + 40 = 340
+/// ```
+/// A task's own jitter does not widen the window it sees. It is added once, at
+/// the end, to the answer.
+#[test]
+fn a_tasks_own_jitter_is_added_once_at_the_end() {
+    let mut s = TaskSet::new();
+    s.push(Task::new(100, 400)).unwrap();
+    s.push(Task::new(200, 1000).jitter(40)).unwrap();
+    assert_eq!(s.response_of(1), Response::Bounded(340));
+}
+
+/// ```text
+/// (300, 400) and (300, 400): U = 0.75 + 0.75 = 1.5 > 1
+/// R = 300   ⌈300/400⌉·300 = 300  →  600
+/// R = 600   ⌈600/400⌉·300 = 600  →  900   climbing, and it never stops
+/// ```
+/// Reported before the loop runs, from utilisation, rather than after ten
+/// thousand fruitless iterations.
+#[test]
+fn an_over_utilised_set_is_refused_by_arithmetic_not_by_exhaustion() {
+    let mut s = TaskSet::new();
+    s.push(Task::new(300, 400)).unwrap();
+    s.push(Task::new(300, 400)).unwrap();
+    assert_eq!(s.utilisation_ppm(), Some(1_500_000));
+    assert_eq!(
+        s.response_of(1),
+        Response::Unbounded(Unbounded::NonConvergent)
+    );
+}
+
+/// With a deadline of `u64::MAX` the deadline exit can never fire and the
+/// iteration cap is four orders of magnitude away, so the question is whether
+/// `checked_mul` gets there first. It does, on the very first interference
+/// term: `⌈R/1⌉ · (u64::MAX / 2)` overflows immediately.
 ///
 /// ```text
-/// T1  C=37  T=211      T2  C=53  T=499      T3  C=101  T=1013
-///
-/// R(T3) settles at 191, and settles there on every run:
-///   R = 101   ⌈101/211⌉·37 + ⌈101/499⌉·53 = 37 + 53   →  191
-///   R = 191   ⌈191/211⌉·37 + ⌈191/499⌉·53 = 37 + 53   →  191   ← fixed point
+/// R = large   ⌈R/1⌉ · C overflows  →  refused, not wrapped
 /// ```
-///
-/// This is the property the integer arithmetic exists for, and the one no
-/// floating-point implementation can offer: two runs on two machines with two
-/// compilers produce the same bits, or one of them is wrong. The periods are
-/// prime so no ceiling divides evenly and every iteration exercises the
-/// remainder.
+#[test]
+fn overflow_beats_the_iteration_cap_to_the_answer() {
+    let mut s = TaskSet::new();
+    s.push(Task::new(u64::MAX / 2, 1).deadline(u64::MAX))
+        .unwrap();
+    s.push(Task::new(1, u64::MAX).deadline(u64::MAX)).unwrap();
+    assert!(!s.response_of(1).is_bounded());
+    assert_eq!(s.response_of(1).bound(), None);
+}
+
+/// No derivation: this fixes an interface, not a number.
 #[test]
 fn determinism_across_repeated_evaluation() {
-    let s = set(&[(37, 211, 211, 0), (53, 499, 499, 0), (101, 1013, 1013, 0)]);
-    let first = s.response_of(2);
-    assert!(matches!(first, Response::Bounded(_)));
-    for _ in 0..1000 {
-        assert_eq!(s.response_of(2), first);
+    let mut s = TaskSet::new();
+    s.push(Task::new(100, 400).jitter(11)).unwrap();
+    s.push(Task::new(200, 1000).blocking(20).jitter(7)).unwrap();
+    let expected = s.response_of(1);
+    for _ in 0..10_000 {
+        assert_eq!(s.response_of(1), expected);
     }
 }
 
-/// A response time longer than the task's own period.
-///
-/// ```text
-/// T1  C=3  T=10  D=10       T2  C=4  T=12  D=30
-///
-/// R(T2):
-///   R = 4    ⌈4/10⌉·3 = 3   →  7
-///   R = 7    ⌈7/10⌉·3 = 3   →  7   ← fixed point
-/// ```
-///
-/// Here it settles below the period, but the deadline of 30 permits a response
-/// beyond T = 12, and the analysis has to allow that. A version that assumed
-/// `R ≤ T` and stopped early would be correct on most sets and silently wrong
-/// on the ones where it matters — deadlines longer than periods are common in
-/// exactly the low-rate, high-cost tasks that cause trouble.
-#[test]
-fn a_deadline_beyond_the_period_is_permitted() {
-    let s = set(&[(3, 10, 10, 0), (4, 12, 30, 0)]);
-    assert_eq!(s.response_of(1), Response::Bounded(7));
-    assert!(s.is_schedulable());
-}
-
-/// Sixteen tasks, the maximum, and the seventeenth is refused.
-///
-/// ```text
-/// T1…T16   C=1, T = 1000·i for i in 1…16
-///
-/// R(T16):
-///   R = 1    ⌈1/T⌉ = 1 for all fifteen higher tasks  →  1 + 15 = 16
-///   R = 16   ⌈16/T⌉ = 1 for all fifteen              →  16   ← fixed point
-/// ```
-///
-/// Sixteen tasks, one microsecond each, against a 16 000 µs deadline.
-///
-/// The cap is not a theoretical limit. It is the point past which a
-/// fixed-priority set on one core stops being checkable by hand, and an
-/// analysis nobody can check by hand is an analysis nobody checks.
+/// No derivation: this fixes an interface, not a number.
 #[test]
 fn the_task_limit_is_enforced_rather_than_overrun() {
     let mut s = TaskSet::new();
-    for i in 1..=16u64 {
-        s.push(Task {
-            wcet_us: 1,
-            period_us: 1000 * i,
-            deadline_us: 1000 * i,
-            blocking_us: 0,
-        })
-        .expect("sixteen fit");
+    for _ in 0..MAX_TASKS {
+        s.push(Task::new(1, 10_000_000)).unwrap();
     }
-    assert_eq!(s.len(), 16);
-    assert!(s
-        .push(Task {
-            wcet_us: 1,
-            period_us: 99_000,
-            deadline_us: 99_000,
-            blocking_us: 0
-        })
-        .is_err());
-    assert!(s.is_schedulable());
+    assert_eq!(s.push(Task::new(1, 10_000_000)), Err(Rejected::Full));
+    assert_eq!(s.len(), MAX_TASKS);
 }
 
-/// Overflow is caught before the iteration cap, not by it.
-///
-/// ```text
-/// T1  C = u64::MAX/2   T = 1   D = u64::MAX
-/// T2  C = u64::MAX/2   T = 2   D = u64::MAX
-///
-/// R(T2):
-///   R = 9223372036854775807   ⌈R/1⌉ · C  →  overflow on the first multiply
-/// ```
-///
-/// The deadline is the largest value a `u64` holds, so the `next > deadline`
-/// exit can never fire and the iteration cap is four orders of magnitude away.
-/// What stops it is `checked_mul` on the very first interference term.
-///
-/// This case exists because an external audit asked whether the cap or the
-/// checked arithmetic wins the race. The checked arithmetic wins, which is the
-/// right answer: a cap returning `Unschedulable` after ten thousand rounds and
-/// an overflow returning it immediately are the same verdict, but only one of
-/// them is a reason.
-#[test]
-fn overflow_beats_the_iteration_cap_to_the_answer() {
-    let s = set(&[
-        (u64::MAX / 2, 1, u64::MAX, 0),
-        (u64::MAX / 2, 2, u64::MAX, 0),
-    ]);
-    assert_eq!(s.response_of(1), Response::Unschedulable);
-}
-
-/// A rejection says what was wrong, not which variant it was.
-///
-/// No derivation to show: this is an ergonomic check rather than an arithmetic
-/// one. It is here because a caller integrating this into a `std` program
-/// otherwise logs `Full` and learns nothing from it.
+/// No derivation: this fixes an interface, not a number.
 #[test]
 fn rejections_and_responses_describe_themselves() {
-    extern crate std;
-    use std::string::ToString;
+    assert!(Rejected::ZeroPeriod.to_string().contains("period"));
+    assert!(Response::Bounded(42).to_string().contains("42"));
+    assert!(Response::Unbounded(Unbounded::NonConvergent)
+        .to_string()
+        .contains("utilisation"));
+    assert!(Response::Unbounded(Unbounded::ExceedsDeadline(400))
+        .to_string()
+        .contains("400"));
+    assert!(Response::Unbounded(Unbounded::NoSuchTask)
+        .to_string()
+        .contains("no task"));
+}
 
+/// No derivation: this fixes an interface, not a number.
+#[test]
+fn a_named_task_carries_its_name() {
     let mut s = TaskSet::new();
-    let e = s
-        .push(Task {
-            wcet_us: 1,
-            period_us: 0,
-            deadline_us: 1,
-            blocking_us: 0,
-        })
-        .unwrap_err();
-    assert!(e.to_string().contains("period is zero"));
-
-    let e = s
-        .push(Task {
-            wcet_us: 500,
-            period_us: 1000,
-            deadline_us: 400,
-            blocking_us: 0,
-        })
-        .unwrap_err();
-    assert!(e.to_string().contains("exceeds the deadline"));
-
-    s.push(Task {
-        wcet_us: 100,
-        period_us: 400,
-        deadline_us: 400,
-        blocking_us: 0,
-    })
-    .unwrap();
-    assert_eq!(s.response_of(0).to_string(), "100 us");
-    assert_eq!(Response::Unschedulable.to_string(), "no bound exists");
+    s.push(Task::new(100, 400).named("sensor_poll")).unwrap();
+    assert_eq!(s.get(0).unwrap().name, "sensor_poll");
+    assert_eq!(s.iter().count(), 1);
 }
