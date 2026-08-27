@@ -32,6 +32,12 @@ An answer within a few days, from one person, without a triage process.
 If the finding is right, a test reproducing it lands before the fix, so the
 repository records what was wrong rather than only that it was fixed.
 
+A claim can be wrong without any code being wrong. If what you find is a number
+in a document that the source does not support, it becomes a check in
+`audit.sh` rather than a fix, and the same class of mistake then fails the next
+build instead of waiting for the next reader to notice it. Four of those were
+found on the first run.
+
 ---
 
 <sub>© 2026 Denis Yermakou — DY Research · connect@axonos.org</sub>

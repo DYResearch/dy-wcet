@@ -1,2 +1,12 @@
 /target
 Cargo.lock
+
+# editor and OS noise
+*.swp
+*~
+.DS_Store
+.idea/
+.vscode/
+
+# audit scratch
+/tmp

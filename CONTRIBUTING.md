@@ -42,10 +42,18 @@ cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test
 cargo build --release --target thumbv7em-none-eabihf
+./audit.sh
 ```
 
-The last one matters: the crate claims `no_std` and a claim nobody builds
+The fourth matters because the crate claims `no_std`, and a claim nobody builds
 against a bare-metal target is a claim nobody checked.
+
+The fifth is newer. `audit.sh` checks every number this repository states in
+prose against the source that is supposed to back it — test counts, the task
+limit, the dependency count, the version in three files, the anchors, the
+licence text in the published archive. It was added in 0.1.2 and it found four
+things wrong on its first run. If you change a number in the README, that
+script is what tells you which other file disagrees with you.
 
 ## What will not be merged
 

@@ -89,11 +89,25 @@ pub struct Task {
 pub enum Response {
     /// A proven upper bound, in microseconds.
     Bounded(u64),
-    /// No bound exists, or the arithmetic to find one overflowed.
+    /// No usable bound. Four things produce this, and they are listed
+    /// because a cause that is real but undocumented is exactly the defect
+    /// this crate exists to prevent elsewhere:
     ///
-    /// Both are the same answer to the question being asked: this task set
+    /// 1. The recurrence does not converge - the set is over-utilised and no
+    ///    finite response time exists.
+    /// 2. The arithmetic to find one overflowed, and was reported rather than
+    ///    wrapped.
+    /// 3. The iteration passed the task's deadline before reaching a fixed
+    ///    point. **A finite bound may exist above the deadline; this stops
+    ///    looking for it**, because continuing tells a caller nothing they did
+    ///    not already know.
+    /// 4. `index` addresses no admitted task.
+    ///
+    /// All four are the same answer to the question being asked: this task set
     /// cannot be shown to meet its deadlines. Distinguishing them would invite
-    /// a caller to treat one as recoverable, and neither is.
+    /// a caller to treat one as recoverable, and none is. Splitting case 3
+    /// from case 1 is the one change to this type worth making, and it is a
+    /// behaviour change rather than a documentation one.
     Unschedulable,
 }
 

@@ -1,20 +1,34 @@
 [package]
 name = "dy-wcet"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 rust-version = "1.82"
 license = "Apache-2.0 OR MIT"
 description = "Worst-case response time for a fixed-priority task set, computed in integer arithmetic that refuses rather than rounds."
 repository = "https://github.com/DYResearch/dy-wcet"
-homepage = "https://github.com/DYResearch"
+homepage = "https://github.com/DYResearch/dy-wcet"
+documentation = "https://docs.rs/dy-wcet"
 authors = ["Denis Yermakou <connect@axonos.org>"]
 keywords = ["real-time", "wcet", "scheduling", "no-std", "embedded"]
 categories = ["embedded", "no-std", "algorithms"]
 readme = "README.md"
+
+# Named explicitly so the published archive is auditable from this file alone,
+# rather than being whatever happened to be in the directory at package time.
+include = [
+    "src/**/*.rs",
+    "tests/**/*.rs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+]
 
 [dependencies]
 
 [features]
 default = []
 
-
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

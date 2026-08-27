@@ -35,10 +35,19 @@ support. Six conditions, all of them mechanical:
 |:--|:--|
 | **1** | At most sixteen tasks, all values fitting in `u64` microseconds |
 | **2** | Fixed priority, priority by position, priority-ceiling blocking |
-| **3** | The crate returns `Bounded(r)` and the correct answer is not `r` — **or** it returns `Unschedulable` where a finite bound exists |
+| **3** | The crate returns `Bounded(r)` and the correct answer is not `r` — **or** it returns `Unschedulable` where a finite bound exists **at or below that task's deadline** |
 | **4** | Your answer is **derived**: every iteration of the recurrence, with the activation count that produced it |
 | **5** | It reproduces. Same input, same output, on any machine, at the released version |
 | **6** | The set exercises the recurrence — the sum of execution times must exceed the shortest period |
+
+**Condition three was narrowed on 27 August 2026.** It previously read "where a
+finite bound exists", full stop, and `response_of` stops iterating the moment
+`R` passes the deadline — so a set whose fixed point sits just above its
+deadline returned `Unschedulable` while a finite bound existed, and claimed the
+pool in one line. That is the deadline exit working as designed and it was not
+what this challenge meant to offer. The narrowing is dated here rather than
+applied quietly, per the section below, and claims sent before that date are
+judged against the wording that was live when they were sent.
 
 Condition six exists because I fell into it myself. A set whose execution times
 sum below the shortest period never activates any task twice, every ceiling is
@@ -74,6 +83,13 @@ is written in the commit message.
 DMA contention, blocking as an input rather than a derivation. These are stated
 limits, not defects, and a set that relies on one of them is outside the claim.
 
+**The deadline exit.** `response_of` returns `Unschedulable` as soon as the
+iteration passes the task's deadline, because continuing tells the caller
+nothing they did not already know. A finite bound may exist above the deadline
+and the crate does not look for it. That is documented behaviour rather than a
+defect, and distinguishing the two is the first candidate for 0.2.0 — but it is
+a behaviour change and is not being made against an unrun test suite.
+
 **A panic, a hang, or an overflow.** Those are bugs and I want them — open an
 issue and I will fix them — but they are not this. This is about a number that
 is wrong while looking right.
@@ -91,7 +107,7 @@ on it sooner.
 What to include:
 
 ```
-Tag:        v0.1.1
+Tag:        v0.1.2
 Task set:   C, T, D, B per task, highest priority first
 Crate says: Bounded(1830)  /  Unschedulable
 You say:    Bounded(1710)

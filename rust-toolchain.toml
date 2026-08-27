@@ -1,0 +1,6 @@
+# Pinned so that "it passes on my machine" and "it passes in CI" are the same
+# claim. The MSRV in Cargo.toml is the floor; this is what the gates run on.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+targets = ["thumbv7em-none-eabihf"]

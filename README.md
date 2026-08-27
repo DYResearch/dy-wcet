@@ -69,9 +69,9 @@ wrote the bug passes.
 ## Three ways this goes wrong elsewhere
 
 **In floating point.** A response time in `f64` has last bits that depend on
-the compiler and the optimisation level. Two implementations disagree in the
+the compiler and the optimisation level; two implementations disagree in the
 eighth decimal, one rounds a deadline the other misses, and no test pins
-either. Everything here is `u64` microseconds — same input, same bits, any
+either. Everything here is `u64` microseconds. Same input, same bits, any
 machine.
 
 **By capping the loop.** The recurrence converges only below full utilisation.
@@ -80,9 +80,9 @@ Above it the iteration climbs forever, and an implementation that stops after
 answer. This returns `Response::Unschedulable`, which fails every deadline
 comparison it is put into.
 
-**By wrapping.** Interference is a sum of ceilings of quotients and it grows
-fast. A wrapping add turns an unschedulable set into a schedulable one — the
-single worst direction for an arithmetic error. Every operation is checked, and
+**By wrapping.** Interference is a sum of ceilings of quotients, and it grows
+fast. A wrapping add turns an unschedulable set into a schedulable one: the
+single worst direction an arithmetic error can go. Every operation is checked;
 overflow is reported as unschedulable.
 
 ---
@@ -114,7 +114,9 @@ about which task wins.
 ## Verify it yourself
 
 ```sh
-git clone https://github.com/DYResearch/dy-wcet && cd dy-wcet && cargo test
+git clone https://github.com/DYResearch/dy-wcet && cd dy-wcet
+cargo test          # the analysis
+./audit.sh          # every number this repository states, against its source
 ```
 
 Twelve unit tests in `src/lib.rs` check the implementation does what its author
@@ -173,18 +175,19 @@ recognised as outside it, rather than quietly analysed anyway.
 
 An intermittent `embassy-time` failure on RP2350, traced through hardware alarm
 arming, timer-queue liveness, and a response time with no upper bound. Written
-end to end: the failure chain in the source, a clear line between what the
-evidence supports and what stays hypothesis, and next steps that name what
-would confirm or kill each one.
+end to end: the failure chain in the source; a clear line between what the
+evidence supports and what stays hypothesis; next steps that each name what
+would confirm or kill them.
 
-It is here as the standard of delivery, not as a sample of it.
+It is here as the standard of delivery, not a sample of one. What arrives looks
+like that.
 
 ## Timing audit
 
-The arithmetic in this crate is one piece of a practice. If you have a timing
-problem that will not resolve — an intermittent failure that survives every
-fix, a suspected race, a scheduler or liveness question, or a WCET bound that
-has to hold up in a review — I take them one at a time, in writing.
+The arithmetic in this crate is one piece of a practice. Some timing problems
+will not resolve: an intermittent failure that survives every fix, a suspected
+race, a scheduler or liveness question, a WCET bound that has to hold up in a
+review. I take them one at a time, in writing.
 
 ### $2,400 — one problem, traced end to end
 
@@ -199,8 +202,8 @@ evidence separated from hypothesis, and concrete next steps or a proposed fix.
 
 **Where it stops.** Source-level and reasoning-level analysis of one issue. No
 hardware instrumentation, no running your build, no multi-issue reviews, no
-ongoing support. If the problem is larger than it looked, I say so before
-starting and quote the rest separately — the fixed price stays fixed.
+ongoing support. If the problem turns out larger than it looked, I say so
+before starting and quote the rest separately; the fixed price stays fixed.
 
 Deeper audits, hardware-in-the-loop verification, multi-issue reviews and
 retained consulting start at **$8,000**, after a short scoping exchange.
@@ -236,7 +239,8 @@ now [`three_tasks_settling_at_six`](tests/on_paper.rs).
 
 ## Licence
 
-Apache-2.0 OR MIT, at your option.
+Apache-2.0 OR MIT, at your option —
+[`LICENSE-APACHE`](LICENSE-APACHE) · [`LICENSE-MIT`](LICENSE-MIT).
 
 ---
 

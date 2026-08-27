@@ -79,7 +79,8 @@ task's **period** instead of its **response window** would have computed:
 900 + ⌈20000/1000⌉ × 120 = 900 + 2400 = 3300 µs
 ```
 
-That is **3 300 µs against a true 1 830** — 1 470 µs of error. Here it is conservative and harmless. Set the
+That is **3 300 µs against a true 1 830** — 1 470 µs of error. Here it is
+conservative and harmless. Set the
 telemetry deadline to 2 000 µs and the same mistake reports a failure that does
 not happen; invert the priorities and it reports a pass on a set that misses.
 
