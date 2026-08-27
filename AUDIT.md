@@ -1,36 +1,90 @@
+<div align="center">
+
 # Embedded Timing Audit
 
-Focused, written audits of hard problems in **embedded timing, concurrency, schedulers, race conditions, and worst-case execution time (WCET)** — the analysis behind [AxonOS](https://github.com/AxonOS-org), an open-source hard-real-time layer for brain–computer interfaces.
+### One problem, traced end to end, in writing.
 
-## Fixed-scope audit — $70
+Denis Yermakou · [connect@axonos.org](mailto:connect@axonos.org)
 
-One clearly-defined, reproducible issue. Async, written delivery.
+</div>
 
-**You provide**
-- The specific problem — a single issue (e.g. an intermittent timing failure, a suspected race, a scheduler/liveness question, or a WCET bound you need sanity-checked).
-- Access to the relevant source (repo, files, or a minimal reproducer) and any logs or traces you already have.
+---
 
-**You get**
-- A written analysis: the failure or behavior chain traced end to end, a clear split between what the evidence supports and what remains hypothesis, and concrete next steps or a proposed fix.
-- Delivered as a markdown report.
+Focused written audits of hard problems in **embedded timing, concurrency,
+schedulers, race conditions, and worst-case execution time**.
 
-**Scope boundaries (so the price stays fixed)**
-- Up to ~3 hours of analysis on **one** issue.
-- Source-level and reasoning-level analysis. Does **not** include hardware instrumentation, running your build, multi-issue reviews, or ongoing support.
-- If the problem turns out to be larger, I say so up front and quote the extra work separately — no surprise charges.
+This is the analysis behind [AxonOS](https://github.com/AxonOS-org), an
+open-source hard-real-time layer for brain–computer interfaces, and
+[`dy-wcet`](https://github.com/DYResearch/dy-wcet), a response-time analysis in
+integer arithmetic with every expected value in its tests derived by hand.
 
-## Larger work
+The defects this work is about do not crash. They produce a plausible number
+that passes a test written by whoever wrote the bug.
 
-Deeper audits, hardware-in-the-loop verification, multi-issue reviews, and retained consulting are quoted after a short scoping exchange.
+---
 
-## What a full analysis looks like
+## $2,400 — fixed scope
 
-See [Embassy #6528 — RP2350 Lost-Alarm Timing Analysis](case-studies/embassy-6528.md) for the depth, structure, and evidence discipline of a complete audit.
+One clearly-defined, reproducible issue. Asynchronous, written delivery, within
+five working days.
+
+### What you provide
+
+- **The problem.** One issue — an intermittent timing failure, a suspected
+  race, a scheduler or liveness question, or a WCET bound you need
+  sanity-checked.
+- **Access to the relevant source** — a repository, the specific files, or a
+  minimal reproducer — and any logs or traces you already have.
+
+### What you get
+
+A markdown report containing:
+
+- the failure or behaviour chain traced end to end through the source;
+- a clear line between what the evidence supports and what remains hypothesis,
+  marked as such rather than blended together;
+- concrete next steps, each naming what would confirm or kill it, or a proposed
+  fix where the evidence carries that far.
+
+[**Embassy #6528 — RP2350 lost-alarm timing analysis**](case-studies/embassy-6528.md)
+is the standard of delivery. It is a complete audit, published in full, not an
+excerpt of one.
+
+### Where it stops
+
+So that the fixed price stays fixed:
+
+- **One issue.** Source-level and reasoning-level analysis.
+- **Not included:** hardware instrumentation, running your build, multi-issue
+  reviews, or ongoing support.
+- **If the problem is larger than it looked**, I say so before starting and
+  quote the rest separately. There are no surprise charges, and there is no
+  version of this where the scope quietly expands and the invoice follows.
+
+---
+
+## Larger work — from $8,000
+
+Deeper audits, hardware-in-the-loop verification, multi-issue reviews and
+retained consulting, quoted after a short scoping exchange.
+
+Scoping costs nothing. If the answer is that you do not need this, that is the
+answer you get.
+
+---
 
 ## Contact
 
-- Email: **connect@axonos.org**
-- Web: https://axonos.org
-- LinkedIn: https://www.linkedin.com/in/denis-yermakou
+- **Email** — [connect@axonos.org](mailto:connect@axonos.org)
+- **Web** — [axonos.org](https://axonos.org) · [dyresearch.github.io](https://dyresearch.github.io)
+- **LinkedIn** — [denis-yermakou](https://www.linkedin.com/in/denis-yermakou)
 
-Denis Yermakou — hard real-time & embedded systems.
+---
+
+<div align="center">
+
+**DY Research** — hard real-time and embedded systems.
+
+© 2026 Denis Yermakou
+
+</div>

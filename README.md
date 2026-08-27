@@ -2,30 +2,16 @@
 
 # dy-wcet
 
-## Technical Case Studies
-
-### Embassy #6528 — RP2350 Lost-Alarm Timing Analysis
-Source-level analysis of an intermittent RP2350 `embassy-time` failure involving
-hardware alarm arming, timer-queue liveness, and potentially unbounded timer
-response time.
-
-[Read the case study](case-studies/embassy-6528.md)
-
-## Embedded Timing Audit
-**Fixed scope: $70 · async · written delivery** — one reproducible embedded
-timing, concurrency, scheduler, race-condition, or WCET problem. Larger work
-quoted separately.
-
-[Audit scope](AUDIT.md)
-
-
 ### Worst-case response time, in arithmetic that refuses rather than rounds.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/DYResearch/dy-wcet/ci.yml?branch=main&style=flat-square&label=CI&labelColor=0e141d)](https://github.com/DYResearch/dy-wcet/actions)
 [![no_std](https://img.shields.io/badge/no__std-yes-3ecf8e?style=flat-square&labelColor=0e141d)](src/lib.rs)
 [![unsafe](https://img.shields.io/badge/unsafe-forbidden-3ecf8e?style=flat-square&labelColor=0e141d)](src/lib.rs)
 [![deps](https://img.shields.io/badge/dependencies-0-3ecf8e?style=flat-square&labelColor=0e141d)](Cargo.toml)
+[![tests](https://img.shields.io/badge/tests-23-3ecf8e?style=flat-square&labelColor=0e141d)](#verify-it-yourself)
 [![Licence](https://img.shields.io/badge/Apache--2.0%20OR%20MIT-475569?style=flat-square&labelColor=0e141d)](#licence)
+
+[Two tasks, one number](#two-tasks-one-number) · [Use](#use) · [Verify](#verify-it-yourself) · [Limits](#what-it-does-not-do) · [Case study](#case-study) · [Timing audit](#timing-audit) · [Bounty](#the-bounty)
 
 </div>
 
@@ -43,10 +29,12 @@ Rⁿ⁺¹ = C + B + Σ ⌈Rⁿ / Tⱼ⌉ · Cⱼ      for every j of higher prio
 Joseph and Pandya published this in 1986. It fits on a napkin, and the wrong
 answers are all quiet.
 
-## Try to get it right
+---
 
-Two tasks. Task A runs 100 µs every 400 µs at higher priority. Task B runs
-200 µs every 1000 µs. What is B's worst-case response time?
+## Two tasks, one number
+
+Task A runs 100 µs every 400 µs at higher priority. Task B runs 200 µs every
+1000 µs. What is B's worst-case response time?
 
 <details>
 <summary><b>Work it out, then open this.</b></summary>
@@ -76,7 +64,9 @@ wrote the bug passes.
 
 </details>
 
-## Three ways this is quietly wrong elsewhere
+---
+
+## Three ways this goes wrong elsewhere
 
 **In floating point.** A response time in `f64` has last bits that depend on
 the compiler and the optimisation level. Two implementations disagree in the
@@ -94,6 +84,8 @@ comparison it is put into.
 fast. A wrapping add turns an unschedulable set into a schedulable one — the
 single worst direction for an arithmetic error. Every operation is checked, and
 overflow is reported as unschedulable.
+
+---
 
 ## Use
 
@@ -126,7 +118,7 @@ git clone https://github.com/DYResearch/dy-wcet && cd dy-wcet && cargo test
 ```
 
 Twelve unit tests in `src/lib.rs` check the implementation does what its author
-intended. Nine integration tests in [`tests/on_paper.rs`](tests/on_paper.rs)
+intended. Eleven integration tests in [`tests/on_paper.rs`](tests/on_paper.rs)
 check something harder: that what its author intended is what the analysis
 says. Every expected value there is derived in the comment above it, iteration
 by iteration, so a reader who distrusts the code can settle it with a pencil.
@@ -158,7 +150,64 @@ Both implementations are by the same author, so agreement is not
 independence — a shared misreading of the recurrence agrees with itself
 perfectly. That is why every figure there is derived rather than asserted.
 
-## There is money on this being wrong
+---
+
+## What it does not do
+
+The model is stated so that a set relying on something outside it can be
+recognised as outside it, rather than quietly analysed anyway.
+
+| Limit | What that means |
+|:--|:--|
+| **It does not measure** | Execution times are inputs. If they came from a spreadsheet rather than an oscilloscope, this is arithmetic about a guess, and the crate cannot tell the difference |
+| **No cache, pipeline, DMA or bus model** | Blocking is an input, not a derivation |
+| **Priority-ceiling protocol assumed** | A task is blocked at most once. Without one, the blocking term is not a single number and this analysis does not apply |
+| **No jitter term** | Release jitter widens the interference window. A set with significant jitter needs the extended recurrence, which this crate does not implement |
+| **Sixteen tasks maximum** | Not a theoretical limit — the point past which a fixed-priority set on one core stops being checkable by hand, and an analysis nobody can check by hand is an analysis nobody checks |
+
+---
+
+## Case study
+
+**[Embassy #6528 — RP2350 lost-alarm timing analysis](case-studies/embassy-6528.md)**
+
+An intermittent `embassy-time` failure on RP2350, traced through hardware alarm
+arming, timer-queue liveness, and a response time with no upper bound. Written
+end to end: the failure chain in the source, a clear line between what the
+evidence supports and what stays hypothesis, and next steps that name what
+would confirm or kill each one.
+
+It is here as the standard of delivery, not as a sample of it.
+
+## Timing audit
+
+The arithmetic in this crate is one piece of a practice. If you have a timing
+problem that will not resolve — an intermittent failure that survives every
+fix, a suspected race, a scheduler or liveness question, or a WCET bound that
+has to hold up in a review — I take them one at a time, in writing.
+
+### $2,400 — one problem, traced end to end
+
+Written delivery, within five working days. The Embassy analysis above is what
+arrives.
+
+**You provide** the problem, the relevant source or a minimal reproducer, and
+whatever logs or traces you already have.
+
+**You get** a markdown report: the behaviour chain traced through the source,
+evidence separated from hypothesis, and concrete next steps or a proposed fix.
+
+**Where it stops.** Source-level and reasoning-level analysis of one issue. No
+hardware instrumentation, no running your build, no multi-issue reviews, no
+ongoing support. If the problem is larger than it looked, I say so before
+starting and quote the rest separately — the fixed price stays fixed.
+
+Deeper audits, hardware-in-the-loop verification, multi-issue reviews and
+retained consulting start at **$8,000**, after a short scoping exchange.
+
+**[Full scope](AUDIT.md)** · [connect@axonos.org](mailto:connect@axonos.org)
+
+## The bounty
 
 I wrote the crate and I wrote its tests, which is the one problem I cannot
 solve from inside: a test written by whoever wrote the bug asserts what the
@@ -172,26 +221,7 @@ add up.
 
 **[The rules, the conditions, and the address](BOUNTY.md)**
 
-## What it does not do
-
-**It does not measure.** Execution times are inputs. If they came from a
-spreadsheet rather than an oscilloscope, this is arithmetic about a guess, and
-the crate cannot tell the difference.
-
-**It does not model cache, pipeline, DMA contention or bus stalls.** Blocking
-is an input, not a derivation.
-
-**It assumes a priority-ceiling protocol**, under which a task is blocked at
-most once. Without one, the blocking term is not a single number and this
-analysis does not apply.
-
-**It has no jitter term.** Release jitter widens the interference window and is
-not modelled here. A set with significant jitter needs the extended recurrence,
-which this crate does not implement.
-
-**Sixteen tasks maximum.** Not a theoretical limit — the point past which a
-fixed-priority set on one core stops being checkable by hand, and an analysis
-nobody can check by hand is an analysis nobody checks.
+---
 
 ## A note on how this was written
 
