@@ -97,7 +97,7 @@ answer you get.
 
 - **Email** — [connect@axonos.org](mailto:connect@axonos.org)
 - **Web** — [axonos.org](https://axonos.org) · [dyresearch.github.io](https://dyresearch.github.io)
-- **LinkedIn** — [denis-yermakou](https://www.linkedin.com/in/denis-yermakou)
+- **LinkedIn** — [linkedin.com/in/axonos](https://www.linkedin.com/in/axonos)
 
 ---
 
