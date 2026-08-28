@@ -23,6 +23,26 @@ and they pass a test written by whoever wrote the bug.
 
 ---
 
+## $4,800 — priority, within 48 hours
+
+For a failure that will not wait: an intermittent fault that survives every fix, a
+timer that stops for minutes, a deadline miss that will not reproduce under a
+debugger.
+
+**What that buys.** Two days of my attention ahead of everything else, and the
+written report at the end of them, whatever it finds — including the parts that
+stay hypothesis.
+
+**What it does not buy.** A promise that the cause will be found. Nobody can
+promise that about a bug they have not seen, and anyone who does has not met a
+hard one.
+
+**The gate is before the money.** Send the description. If I do not think
+forty-eight hours will get anywhere, I say so and there is nothing to pay. That
+is the whole guarantee, and it is one I can keep.
+
+---
+
 ## $2,400 — fixed scope
 
 One clearly-defined, reproducible issue. Asynchronous, written delivery, within
