@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // SPDX-FileCopyrightText: 2026 Denis Yermakou <connect@axonos.org>
+// DY Research — https://dyresearch.github.io
 
 //! Kani harnesses for `response_of`.
 //!
@@ -9,9 +10,25 @@
 //!
 //!     cargo kani --harness a_bounded_response_never_exceeds_its_deadline
 //!
-//! The unwind limits are small on purpose: the recurrence settles in two
-//! iterations on every set measured, so a bound of four covers twice the
-//! observed worst case while keeping the proof tractable.
+//! **On the unwind limits.** Through 1.2.1 this file said the recurrence
+//! settles in two iterations on every set measured, and that a bound of four
+//! therefore covered twice the observed worst case. Both halves were wrong.
+//! `telemetry_tx` in this repository's own cross-check fixture takes three,
+//! and over 271,442 randomly generated converging sets, 67.9% take more than
+//! two, with an observed maximum of 126. No harness ever used a bound of four
+//! either; they use five and three.
+//!
+//! The proofs were never unsound — each holds for every execution inside its
+//! declared unwind — but the sentence justifying the bound claimed a coverage
+//! the bound does not have. What an unwind of five establishes is a property
+//! over the sets whose recurrence settles in fewer than five iterations, which
+//! is roughly four in five of them and not all of them. That is the honest
+//! statement, and it is the one to make.
+//!
+//! From 2.0.0 the analysis carries two nested bounded loops rather than one —
+//! a busy-period solve, then a per-job solve — so these bounds cover less of
+//! the input space than the same numbers did before, and the recurrence
+//! harness below is rewritten against the new structure.
 
 use dy_wcet::{Response, Task, TaskSet, Unbounded};
 
@@ -55,21 +72,47 @@ fn every_unbounded_variant_fails_every_deadline() {
 }
 
 /// `response_of` terminates and never panics. Overflow is refused rather than
-/// wrapped, so no arithmetic in the loop can abort.
+/// wrapped, so no arithmetic in either loop can abort.
+///
+/// The bound covers the busy-period solve and the per-job solve together. It
+/// does not cover every admissible set — see the note at the head of this file
+/// — and the input scope is narrowed here so that what it does cover is
+/// stated rather than implied.
 #[kani::proof]
-#[kani::unwind(5)]
+#[kani::unwind(6)]
 fn the_recurrence_terminates_without_panicking() {
     let c0: u64 = kani::any();
     let t0: u64 = kani::any();
     let c1: u64 = kani::any();
     let t1: u64 = kani::any();
-    kani::assume(t0 > 0 && t1 > 0);
+    kani::assume(t0 > 0 && t1 > 0 && t0 < 64 && t1 < 64);
     kani::assume(c0 <= t0 && c1 <= t1);
 
     let mut s = TaskSet::new();
     if s.push(task(c0, t0, t0, 0, 0)).is_ok() && s.push(task(c1, t1, t1, 0, 0)).is_ok() {
         let _ = s.response_of(0);
         let _ = s.response_of(1);
+    }
+}
+
+/// A bounded answer is never below the work the job itself contains. The
+/// busy-period form must not lose the `q = 0` case that the single-job
+/// recurrence computed.
+#[kani::proof]
+#[kani::unwind(6)]
+fn a_bounded_answer_is_never_below_its_own_work() {
+    let c: u64 = kani::any();
+    let t: u64 = kani::any();
+    let b: u64 = kani::any();
+    let j: u64 = kani::any();
+    kani::assume(t > 0 && t < 1_000);
+    kani::assume(c <= t && b < 1_000 && j < 1_000);
+
+    let mut s = TaskSet::new();
+    if s.push(task(c, t, u64::MAX, b, j)).is_ok() {
+        if let Response::Bounded(r) = s.response_of(0) {
+            assert!(r >= c + b + j);
+        }
     }
 }
 

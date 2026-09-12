@@ -1,6 +1,6 @@
 [package]
 name = "dy-wcet"
-version = "1.2.1"
+version = "2.0.0"
 edition = "2021"
 rust-version = "1.82"
 license = "Apache-2.0 OR MIT"
@@ -32,3 +32,9 @@ default = []
 
 [package.metadata.docs.rs]
 all-features = true
+
+# `#[cfg(kani)]` gates the proof module declared in src/lib.rs. Without this,
+# rustc does not know the cfg, every build emits `unexpected_cfgs`, and CI
+# promotes that to an error through `cargo clippy --all-targets -- -D warnings`.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

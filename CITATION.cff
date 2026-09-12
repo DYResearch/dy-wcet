@@ -9,15 +9,17 @@ authors:
     affiliation: "DY Research"
 abstract: >-
   Response-time analysis for fixed-priority task sets with release jitter and
-  blocking, computed entirely in integer arithmetic. Non-convergence returns an
+  blocking, computed entirely in integer arithmetic over the level-i busy
+  period, so that a task whose response runs past its own period is charged for
+  the self-interference that follows. Non-convergence returns an
   explicit unbounded result rather than a capped value, a bound above the
   deadline is reported with its value rather than discarded, and every
   operation is checked so that overflow cannot turn an unschedulable set into a
   schedulable-looking one. Includes Audsley's optimal priority assignment.
 repository-code: "https://github.com/DYResearch/dy-wcet"
 url: "https://github.com/DYResearch/dy-wcet"
-version: "1.2.1"
-date-released: "2026-08-27"
+version: "2.0.0"
+date-released: "2026-09-12"
 license: "Apache-2.0 OR MIT"
 keywords:
   - real-time systems

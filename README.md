@@ -8,8 +8,8 @@
 [![no_std](https://img.shields.io/badge/no__std-yes-3ecf8e?style=flat-square&labelColor=0e141d)](src/lib.rs)
 [![unsafe](https://img.shields.io/badge/unsafe-forbidden-3ecf8e?style=flat-square&labelColor=0e141d)](src/lib.rs)
 [![deps](https://img.shields.io/badge/dependencies-0-3ecf8e?style=flat-square&labelColor=0e141d)](Cargo.toml)
-[![tests](https://img.shields.io/badge/tests-49-3ecf8e?style=flat-square&labelColor=0e141d)](#verify-it-yourself)
-[![proofs](https://img.shields.io/badge/Kani%20harnesses-5-3ecf8e?style=flat-square&labelColor=0e141d)](kani/)
+[![tests](https://img.shields.io/badge/tests-70-3ecf8e?style=flat-square&labelColor=0e141d)](#verify-it-yourself)
+[![proofs](https://img.shields.io/badge/Kani%20harnesses-6-3ecf8e?style=flat-square&labelColor=0e141d)](kani/)
 [![Licence](https://img.shields.io/badge/Apache--2.0%20OR%20MIT-475569?style=flat-square&labelColor=0e141d)](#licence)
 
 [Two tasks, one number](#two-tasks-one-number) · [Use](#use) · [Verify](#verify-it-yourself) · [Limits](#what-it-does-not-do) · [Case study](#case-study) · [Timing audit](#timing-audit) · [Bounty](#the-bounty)
@@ -94,7 +94,7 @@ overflow is reported as unschedulable.
 
 ```toml
 [dependencies]
-dy-wcet = "1.2"
+dy-wcet = "2.0"
 ```
 
 ```rust
@@ -168,6 +168,20 @@ says.
 Every expected value there is derived in the comment above it, iteration by
 iteration, so a reader who distrusts the code can settle it with a pencil.
 
+Three further files exist because none of the above could catch the defect
+fixed in 2.0.0. [`tests/oracle.rs`](tests/oracle.rs) computes the busy period a
+second way, growing the job count instead of deriving it, and agrees on 153,365
+generated sets. [`tests/differential.rs`](tests/differential.rs) keeps the
+recurrence this release replaced and checks the new answer is never smaller.
+[`tests/precheck.rs`](tests/precheck.rs) holds the utilisation bound to its own
+preconditions. Every other artifact here compares the implementation to itself.
+
+A fifth file, [`tests/boundaries.rs`](tests/boundaries.rs), holds the surface
+around the recurrence: what the accessors report, what admission refuses, and
+the two constants that bound the analysis. `bound` and `response_time` answer
+different questions about the same converged number, and a caller that reads
+the wrong one sizes a margin against a deadline it already missed.
+
 8 property tests in [`tests/properties.rs`](tests/properties.rs) check what no fixed
 case can, across roughly twenty-eight thousand generated task sets: that a
 response never falls below the work it contains, that jitter never shortens
@@ -177,8 +191,8 @@ generator is thirty lines of seeded linear congruence and adds no dependency,
 because a dependency tree pulled in to produce pseudo-random `u64` would cost
 this crate the one thing it advertises.
 
-Five Kani harnesses in [`kani/`](kani/) bound what the tests sample. Run them
-with `cargo kani`.
+Six Kani harnesses in [`kani/`](kani/) bound what the tests sample. Run them
+with `cargo kani`; CI runs them on every push, which it did not before 2.0.0.
 
 Four of those cases are worth reading even if you never use this crate:
 
@@ -220,6 +234,7 @@ recognised as outside it, rather than quietly analysed anyway.
 | **No cache, pipeline, DMA or bus model** | Blocking is an input, not a derivation |
 | **Priority-ceiling protocol assumed** | A task is blocked at most once. Without one, the blocking term is not a single number and this analysis does not apply |
 | **One core** | No partitioned or global multiprocessor analysis. A set spread over cores needs a different recurrence |
+| **A busy period of at most 1024 jobs** | Past that the analysis refuses rather than enumerating. A response spanning a thousand of a task's own periods is not an answer anybody checks |
 | **Sixteen tasks maximum** | Not a theoretical limit — the point past which a fixed-priority set on one core stops being checkable by hand, and an analysis nobody can check by hand is an analysis nobody checks |
 
 ---
@@ -244,7 +259,7 @@ will not resolve: an intermittent failure that survives every fix, a suspected
 race, a scheduler or liveness question, a WCET bound that has to hold up in a
 review. I take them one at a time, in writing.
 
-### $2,400 — one problem, traced end to end
+### $3,000 — one problem, traced end to end
 
 Written delivery, within five working days. The Embassy analysis above is what
 arrives.

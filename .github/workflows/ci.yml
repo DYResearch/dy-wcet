@@ -90,3 +90,18 @@ jobs:
           log=$(grep -m1 -oE '^## \[[0-9][^]]*\]' CHANGELOG.md | tr -d '#[] ')
           echo "  tag $tag · manifest $man · changelog $log"
           test "$tag" = "$man" && test "$tag" = "$log"
+
+  proofs:
+    name: Kani harnesses
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Through 1.2.1 the README said "run them with cargo kani" and the
+      # harnesses were not declared anywhere, so a clean clone ran nothing.
+      # The badge counted proofs that no gate enforced. This is that gate.
+      - run: cargo install --locked kani-verifier
+      - run: cargo kani setup
+      - run: cargo kani

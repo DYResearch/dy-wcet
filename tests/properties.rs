@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // SPDX-FileCopyrightText: 2026 Denis Yermakou <connect@axonos.org>
+// DY Research — https://dyresearch.github.io
 
 //! Properties that must hold for every task set, checked over generated ones.
 //!

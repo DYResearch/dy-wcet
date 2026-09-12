@@ -43,7 +43,7 @@ is the whole guarantee, and it is one I can keep.
 
 ---
 
-## $2,400 — fixed scope
+## $3,000 — fixed scope
 
 One clearly-defined, reproducible issue. Asynchronous, written delivery, within
 five working days.
@@ -103,7 +103,7 @@ answer you get.
 
 <div align="center">
 
-**DY Research** — hard real-time and embedded systems.
+**DY Research** — hard real-time and embedded systems. Denis Yermakou.
 
 © 2026 Denis Yermakou
 

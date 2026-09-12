@@ -40,5 +40,5 @@ found on the first run.
 
 ---
 
-<sub>© 2026 Denis Yermakou — DY Research · connect@axonos.org</sub>
+<sub>© 2026 **DY Research** — Denis Yermakou · connect@axonos.org</sub>
 

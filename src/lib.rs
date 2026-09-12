@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // SPDX-FileCopyrightText: 2026 Denis Yermakou <connect@axonos.org>
-// Part of DY Research — https://github.com/DYResearch
+// DY Research — https://dyresearch.github.io
 
 //! Worst-case response time for a fixed-priority task set.
 //!
@@ -103,6 +103,11 @@ pub const FULL_UTILISATION_PPM: u64 = 1_000_000;
 /// assumed: every set tried, including sixteen tasks at 0.9 utilisation and
 /// two at 0.9999, settles in two iterations.
 pub const ITERATION_CAP: u32 = 10_000;
+
+/// How many jobs of one task a level-i busy period may contain before the
+/// analysis refuses it. A busy period longer than this is a set no reader
+/// could check by hand, which is the same reason MAX_TASKS is sixteen.
+pub const BUSY_PERIOD_CAP: u64 = 1_024;
 
 /// A periodic or sporadic task, in microseconds throughout.
 ///
@@ -431,13 +436,28 @@ impl TaskSet {
 
     /// The worst-case response time of the task at `index`.
     ///
-    /// Solves the jitter-extended recurrence:
+    /// Solves the jitter-extended recurrence over the level-*i* busy period —
+    /// the stretch during which the processor is continuously occupied by this
+    /// priority or higher:
     ///
     /// ```text
-    /// w⁰   = C + B
-    /// wⁿ⁺¹ = C + B + Σ ⌈(wⁿ + Jⱼ) / Tⱼ⌉ · Cⱼ   for every j of higher priority
-    /// R    = w + J
+    /// L    = B + Σ ⌈(L + Jⱼ)/Tⱼ⌉ · Cⱼ                 this level and above
+    /// w(q) = (q+1)·C + B + Σ ⌈(w(q) + Jⱼ)/Tⱼ⌉ · Cⱼ    every j above
+    /// R(q) = w(q) − q·T + J
+    /// R    = max R(q)   over q = 0 … ⌈(L + J)/T⌉ − 1
     /// ```
+    ///
+    /// Joseph and Pandya's 1986 form is the `q = 0` line of this without `J`,
+    /// and it is sound exactly while the answer stays inside the task's own
+    /// period. Past that the task's next job is released before the current one
+    /// finishes, and the single-job form omits that self-interference. Until
+    /// 2.0.0 this computed `q = 0` alone while accepting deadlines beyond the
+    /// period, and under-reported on every set that reached past one.
+    ///
+    /// The busy-period length is solved first rather than discovered by growing
+    /// `q`, so a set that cannot close one is refused after a single bounded
+    /// solve and the job count is known before any per-job work begins. A count
+    /// above [`BUSY_PERIOD_CAP`] is refused rather than enumerated.
     ///
     /// Convergence is decided before iterating, from the utilisation through
     /// this priority level. When the recurrence does converge, the search runs
@@ -445,7 +465,7 @@ impl TaskSet {
     /// [`Unbounded::ExceedsDeadline`] can report by how much. Earlier versions
     /// stopped at the deadline and could not.
     ///
-    /// Every add and multiply is checked. An overflow returns
+    /// Every add, multiply and subtract is checked. An overflow returns
     /// [`Unbounded::Overflow`] rather than wrapping, because a wrapped sum
     /// turns an unschedulable set into a schedulable-looking one, and that is
     /// the one direction an arithmetic error must never go.
@@ -464,46 +484,151 @@ impl TaskSet {
             Some(_) => {}
         }
 
-        let base = match task.wcet_us.checked_add(task.blocking_us) {
-            Some(b) => b,
+        // Length of the level-i busy period: the stretch during which the
+        // processor is continuously occupied by this priority or higher.
+        //
+        //     L = B + Σ ⌈(L + Jⱼ)/Tⱼ⌉ · Cⱼ     for every j at this level or above
+        //
+        // Solving this first, rather than growing the job count one at a time,
+        // is what keeps the cost of refusing an over-utilised set to a single
+        // bounded solve. A set that cannot close its busy period is refused
+        // here, before any per-job work is attempted.
+        let mut busy = task.blocking_us;
+        for t in self.tasks.iter().take(index + 1).flatten() {
+            busy = match busy.checked_add(t.wcet_us) {
+                Some(x) => x,
+                None => return Response::Unbounded(Unbounded::Overflow),
+            };
+        }
+        let mut busy_settled = false;
+        for _ in 0..ITERATION_CAP {
+            let mut next = task.blocking_us;
+            for t in self.tasks.iter().take(index + 1).flatten() {
+                let window = match busy.checked_add(t.jitter_us) {
+                    Some(x) => x,
+                    None => return Response::Unbounded(Unbounded::Overflow),
+                };
+                let jobs = window / t.period_us + u64::from(window % t.period_us != 0);
+                let demand = match jobs.checked_mul(t.wcet_us) {
+                    Some(x) => x,
+                    None => return Response::Unbounded(Unbounded::Overflow),
+                };
+                next = match next.checked_add(demand) {
+                    Some(x) => x,
+                    None => return Response::Unbounded(Unbounded::Overflow),
+                };
+            }
+            if next == busy {
+                busy_settled = true;
+                break;
+            }
+            busy = next;
+        }
+        if !busy_settled {
+            return Response::Unbounded(Unbounded::NonConvergent);
+        }
+
+        // How many jobs of this task the busy period contains. Derived, not
+        // capped: the analysis knows the count before it starts enumerating.
+        let released = match busy.checked_add(task.jitter_us) {
+            Some(x) => x,
             None => return Response::Unbounded(Unbounded::Overflow),
         };
-        let mut w = base;
+        let jobs_in_window = released / task.period_us + u64::from(released % task.period_us != 0);
+        let jobs_in_window = jobs_in_window.max(1);
 
-        for _ in 0..ITERATION_CAP {
-            let mut next = base;
-            for higher in self.tasks.iter().take(index).flatten() {
-                let window = match w.checked_add(higher.jitter_us) {
-                    Some(x) => x,
-                    None => return Response::Unbounded(Unbounded::Overflow),
-                };
-                // ⌈window / T⌉ without floating point and without the overflow
-                // the usual (a + b - 1) / b trick invites.
-                let jobs = window / higher.period_us + u64::from(window % higher.period_us != 0);
-                let interference = match jobs.checked_mul(higher.wcet_us) {
-                    Some(x) => x,
-                    None => return Response::Unbounded(Unbounded::Overflow),
-                };
-                next = match next.checked_add(interference) {
-                    Some(x) => x,
-                    None => return Response::Unbounded(Unbounded::Overflow),
-                };
-            }
-
-            if next == w {
-                let r = match w.checked_add(task.jitter_us) {
-                    Some(x) => x,
-                    None => return Response::Unbounded(Unbounded::Overflow),
-                };
-                return if r > task.deadline_us {
-                    Response::Unbounded(Unbounded::ExceedsDeadline(r))
-                } else {
-                    Response::Bounded(r)
-                };
-            }
-            w = next;
+        // A busy period holding more jobs of one task than this is a set no
+        // reader could check by hand, and the point of the sixteen-task limit
+        // is that every answer here stays checkable. Refused rather than
+        // enumerated.
+        if jobs_in_window > BUSY_PERIOD_CAP {
+            return Response::Unbounded(Unbounded::NonConvergent);
         }
-        Response::Unbounded(Unbounded::NonConvergent)
+
+        // Job q of this task inside that busy period, counting from zero.
+        // While the busy period is still running, job q + 1 is released before
+        // job q finishes, and the work already queued is charged to it.
+        let mut worst: u64 = 0;
+
+        for q in 0..jobs_in_window {
+            // (q+1)·C + B: every job released so far in this busy period, plus
+            // the one blocking term the priority-ceiling protocol allows.
+            let base = match q
+                .checked_add(1)
+                .and_then(|n| n.checked_mul(task.wcet_us))
+                .and_then(|x| x.checked_add(task.blocking_us))
+            {
+                Some(b) => b,
+                None => return Response::Unbounded(Unbounded::Overflow),
+            };
+            let mut w = base;
+            let mut settled = false;
+
+            for _ in 0..ITERATION_CAP {
+                let mut next = base;
+                for higher in self.tasks.iter().take(index).flatten() {
+                    let window = match w.checked_add(higher.jitter_us) {
+                        Some(x) => x,
+                        None => return Response::Unbounded(Unbounded::Overflow),
+                    };
+                    // ⌈window / T⌉ without floating point and without the overflow
+                    // the usual (a + b - 1) / b trick invites.
+                    let jobs =
+                        window / higher.period_us + u64::from(window % higher.period_us != 0);
+                    let interference = match jobs.checked_mul(higher.wcet_us) {
+                        Some(x) => x,
+                        None => return Response::Unbounded(Unbounded::Overflow),
+                    };
+                    next = match next.checked_add(interference) {
+                        Some(x) => x,
+                        None => return Response::Unbounded(Unbounded::Overflow),
+                    };
+                }
+
+                if next == w {
+                    settled = true;
+                    break;
+                }
+                w = next;
+            }
+
+            if !settled {
+                return Response::Unbounded(Unbounded::NonConvergent);
+            }
+
+            // R(q) = w(q) + J − q·T. The completion is measured from this
+            // job's own release, not from the start of the busy period.
+            //
+            // The jitter is grouped in before the shift is taken out, and the
+            // order is not cosmetic. Job q is released at q·T − J from the
+            // start of the busy period, so w(q) − q·T is negative whenever the
+            // job completes before that nominal offset, which a jittered task
+            // does routinely. `u64` has no negative, and taking the shift out
+            // first made `checked_sub` refuse a set whose answer is an ordinary
+            // positive number. Grouped this way every intermediate stays in
+            // range, because w(q) + J ≥ q·T holds for the same reason: a job
+            // cannot complete before it is released.
+            let shift = match q.checked_mul(task.period_us) {
+                Some(x) => x,
+                None => return Response::Unbounded(Unbounded::Overflow),
+            };
+            let r = match w
+                .checked_add(task.jitter_us)
+                .and_then(|x| x.checked_sub(shift))
+            {
+                Some(x) => x,
+                None => return Response::Unbounded(Unbounded::Overflow),
+            };
+            if r > worst {
+                worst = r;
+            }
+        }
+
+        if worst > task.deadline_us {
+            Response::Unbounded(Unbounded::ExceedsDeadline(worst))
+        } else {
+            Response::Bounded(worst)
+        }
     }
 
     /// Whether every task meets its deadline.
@@ -587,19 +712,45 @@ impl TaskSet {
     #[must_use]
     pub fn liu_layland_bound_ppm(n: usize) -> u64 {
         const BOUND: [u64; 17] = [
-            1_000_000, 1_000_000, 828_427, 779_763, 756_828, 743_492, 734_772, 728_627, 724_062,
-            720_538, 717_735, 715_456, 713_557, 711_948, 710_566, 709_365, 708_311,
+            1_000_000, 1_000_000, 828_427, 779_763, 756_828, 743_491, 734_772, 728_626, 724_061,
+            720_537, 717_734, 715_451, 713_557, 711_958, 710_592, 709_411, 708_380,
         ];
         BOUND.get(n).copied().unwrap_or(693_147)
     }
 
     /// Whether the set passes the Liu and Layland pre-check.
     ///
-    /// True means schedulable under rate-monotonic priorities without further
-    /// analysis. False means nothing at all, and is why the bound is a
-    /// pre-check rather than a test.
+    /// True means schedulable without further analysis. False means nothing at
+    /// all, and is why the bound is a pre-check rather than a test.
+    ///
+    /// The theorem holds only for its own preconditions, so this checks them
+    /// rather than assuming the caller did:
+    ///
+    /// * every deadline equals its period, and
+    /// * priorities are rate-monotonic — shorter period, higher priority.
+    ///
+    /// A set breaking either gets `false`. Until 2.0.0 neither was checked, and
+    /// a rate-monotonic set at a fifth of the bound with one constrained
+    /// deadline was told it was schedulable while missing by five microseconds.
+    /// The utilisation bound saying *safe* about a set that misses is the exact
+    /// failure this crate was written about.
     #[must_use]
     pub fn passes_utilisation_bound(&self) -> bool {
+        let mut previous: Option<u64> = None;
+        for t in self.tasks.iter().take(self.len).flatten() {
+            if t.deadline_us != t.period_us {
+                return false;
+            }
+            if t.blocking_us != 0 || t.jitter_us != 0 {
+                return false;
+            }
+            if let Some(p) = previous {
+                if t.period_us < p {
+                    return false;
+                }
+            }
+            previous = Some(t.period_us);
+        }
         match self.utilisation_ppm() {
             Some(u) => u <= Self::liu_layland_bound_ppm(self.len),
             None => false,
@@ -665,6 +816,24 @@ impl TaskSet {
         Some(order)
     }
 }
+
+// The harnesses live outside `src/` so that an ordinary build never walks
+// them, and are declared here so that `cargo kani` finds them from a clean
+// clone. Until 2.0.0 this declaration did not exist: `kani/response_bounds.rs`
+// shipped in the published archive and was dead code, and the README's
+// instruction to run `cargo kani` did nothing.
+//
+// The `cfg(kani)` gate is the idiom Kani documents, and it has a cost worth
+// naming: the module is invisible to rustc, rust-analyzer, and every tool
+// built on them, so no code graph or coverage tool can see which production
+// code the proofs reach. Making them visible would mean a stub dependency,
+// and this crate has none. The gate is the lesser of the two.
+#[cfg(kani)]
+extern crate self as dy_wcet;
+
+#[cfg(kani)]
+#[path = "../kani/response_bounds.rs"]
+mod proofs;
 
 #[cfg(test)]
 mod tests {

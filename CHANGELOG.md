@@ -1,5 +1,182 @@
 # Changelog
 
+## [2.0.0] — 2026-09-12
+
+### Housekeeping in this release
+
+- **The fixed-scope audit is $3,000.** It was quoted at $2,400 here and at
+  $3,000 in the published writing, and a price stated twice at two figures is
+  the same defect as a number stated twice at two values. `AUDIT.md`, the
+  README and the landing page now agree, and the page checks the repository on
+  every publish rather than trusting that they do.
+- **One signature on everything.** Every source file opens with the same three
+  lines, and every document closes with the same one: DY Research, Denis
+  Yermakou, one address.
+- **`audit.sh` stopped reporting absence as failure.** A cross-compilation
+  target that is not installed says something about the machine and nothing
+  about the repository, and on a toolchain without rustup it is not even
+  actionable. It is a note there and a warning only where it can be acted on.
+
+
+The analysis was unsound for sets whose response runs past their own period,
+and had been since the deadline-beyond-period case was first permitted. This
+release fixes that, and fixes four things found while checking whether anything
+else was wrong.
+
+### The defect
+
+A task whose deadline exceeds its period can have a response time longer than
+its period, and its next job is then released before the current one finishes.
+The single-job recurrence charges only higher-priority interference and is
+sound exactly while `R ≤ T`. This crate permitted `D > T`, advertised it, and
+never checked `R ≤ T`.
+
+```text
+task 0:  C = 5  T = 10  D = 10
+task 1:  C = 2  T = 5   D = 10  B = 2        U = 0.9
+
+1.2.1:  response_of(1) = Bounded(9)  ·  is_schedulable = true  ·  slack = Some(1)
+2.0.0:  response_of(1) = ExceedsDeadline(11)  ·  is_schedulable = false  ·  slack = None
+```
+
+Job two of task 1 is released at t = 5, starts at 9, is preempted at 10 by task
+0's second activation, and finishes at 16 — eleven microseconds after its own
+release, against a ten microsecond deadline. 1.2.1 reported one microsecond of
+slack on a set that misses by one.
+
+Wrong in the flattering direction, which is the one direction this crate exists
+to refuse. Across 400,000 generated sets in the admitted region, 14,185
+under-reported and 557 of those returned `Bounded` on a set that misses.
+
+### Why nothing here caught it
+
+`tests/properties.rs` generates deadlines up to twice the period, so roughly
+half of its twenty-eight thousand sets were in the region. The bug was
+generated thousands of times and asserted past, because every property checks a
+lower bound, a monotonicity, or whether the implementation agrees with itself.
+The Kani harness proving `Bounded(r) → r ≤ d` is true of the buggy code at any
+unwind: 9 ≤ 10. `docs/CROSSCHECK.md` compares against an implementation by the
+same author of the same recurrence, which the document already says is not
+independence.
+
+Nothing in this repository compared the implementation to a different
+algorithm. `tests/oracle.rs` is the first thing that does.
+
+### Changed
+
+- **`response_of` solves the level-i busy period.** The busy-period length is
+  found first as a single bounded fixed point, the job count derived from it as
+  `⌈(L + J)/T⌉`, and the worst `R(q) = w(q) − q·T + J` returned. Joseph and
+  Pandya's form is the `q = 0` line of this. Answers change only for sets whose
+  response passed their own period; all forty-nine tests from 1.2.1 pass with
+  no expected value edited.
+- **`passes_utilisation_bound` checks its own preconditions.** Liu and
+  Layland's bound holds for implicit deadlines under rate-monotonic priorities
+  with no blocking or jitter. None of that was checked. A rate-monotonic set at
+  a fifth of the bound with one constrained deadline was told it was
+  schedulable while missing by five microseconds. Sets outside the theorem now
+  return `false`.
+- **The Liu and Layland table is floored, not rounded.** Six of sixteen entries
+  sat above the true value — five by one part per million, `n = 11` by five —
+  which admits a set the theorem does not cover. Four more (`n = 13…16`) were
+  simply wrong numbers, drifting up to sixty-nine parts per million in the
+  conservative direction. All sixteen are now `⌊n·(2^(1/n) − 1)·10⁶⌋`, with a
+  test against values computed to forty digits.
+- **A lone task with `C > T` is refused rather than bounded.** Utilisation is a
+  floor, so for periods above 10⁶ µs a task that can never keep up could still
+  report exactly full utilisation. 1.2.1 returned a bound for it.
+- **`BUSY_PERIOD_CAP`**, new, at 1024. A busy period holding more jobs of one
+  task than that is refused before any per-job work, for the same reason
+  `MAX_TASKS` is sixteen.
+
+### Fixed in the documentation, which described code that no longer existed
+
+- The Kani unwind justification claimed the recurrence settles in two
+  iterations on every set measured, and that a bound of four covered twice
+  that. `telemetry_tx` in this repository's own cross-check fixture takes
+  three; across 271,442 generated converging sets 67.9% take more than two,
+  with a maximum of 126; and no harness ever used four — they use five and
+  three. The proofs were sound within their declared unwind. The sentence
+  justifying that unwind was not, and it is now replaced by the measurements.
+- `response_of`'s doc comment stated the single-job recurrence as the whole
+  analysis.
+- `audit.sh` reported on `Response::Unschedulable`, removed in 1.2.1, and used
+  `grep -P`, which is GNU-only and fails silently on macOS and BSD, taking the
+  tab check with it.
+
+### Found by the new tests, and fixed
+
+`R(q) = w(q) − q·T + J` was grouped as `(w − q·T) + J`. A job of a task that
+carries release jitter is released at `q·T − J` from the start of the busy
+period, so `w(q) − q·T` is negative whenever that job completes before its
+nominal offset. `u64` has no negative, `checked_sub` refused, and the analysis
+returned `Overflow` on sets whose answer is an ordinary positive number.
+
+```text
+task 0:  C = 1  T = 10
+task 1:  C = 2  T = 10  D = 100  J = 8
+
+before:  response_of(1) = Overflow
+after:   response_of(1) = Bounded(11)
+```
+
+Across 120,053 generated task and index pairs the regrouping changes 3,116 of
+them, 2.6%, and every one is `Overflow` giving way to a real answer. Not one
+number that the analysis already produced moves. `is_schedulable` is unchanged
+throughout, because both outcomes fail `is_bounded`; what was wrong is the
+diagnosis. A set told the arithmetic had been refused was in most cases a set
+that misses its deadline by a stated amount, and `response_time` returned
+`None` where it should have carried that amount.
+
+`tests/oracle.rs` grouped it the same way and returned `None` at the same
+point, where the harness counts a skip rather than a disagreement. So the
+153,365 agreements it reports were 153,365 agreements about the region where
+the two implementations were both right. A second opinion that shares the
+first one's arithmetic is not a second opinion, and this is the second time in
+one release that the point has had to be made in this file.
+
+The case that surfaced it is `a_tasks_own_jitter_can_add_a_job_to_its_own_busy_period`
+in `tests/boundaries.rs`, derived by hand, two tasks, five lines.
+
+### Added
+
+- `tests/oracle.rs` — the busy period computed a second way, growing the job
+  count rather than deriving it. 153,365 exact agreements.
+- `tests/differential.rs` — the 1.2.1 recurrence kept as a comparison target.
+  101,105 comparisons: never smaller, and bit-identical wherever the old answer
+  stayed inside the task's period.
+- `tests/precheck.rs` — the utilisation bound held to its preconditions, and
+  every table entry against its true floor.
+- `tests/boundaries.rs` — thirteen cases on the surface around the recurrence:
+  `first_failure`, `utilisation_through`, `get` and `iter`, the split between
+  `bound` and `response_time`, a full set of sixteen, the busy-period cap, and
+  the utilisation table past its last entry. Every expected value is derived in
+  the comment above it.
+- Two Kani harnesses where there were five: the termination proof rewritten for
+  the two-loop structure, and a new one for the invariant the busy-period form
+  has to preserve.
+- `[lints.rust] check-cfg = ['cfg(kani)']` in `Cargo.toml`. The `#[cfg(kani)]`
+  declaration above is a cfg rustc does not know, so every build emitted
+  `unexpected_cfgs` and CI's `-D warnings` would have rejected the release
+  that introduced it.
+- **The harnesses are now wired into the crate.** Until 2.0.0 there was no
+  `#[cfg(kani)]` module declaration, so `kani/response_bounds.rs` shipped in
+  the published archive as dead code and `cargo kani` found nothing from a
+  clean clone, while the README said to run it. CI now runs the proofs on every
+  push; it did not before.
+
+### Migration
+
+Match arms are unchanged; `Unbounded` still carries the same four reasons. What
+changes is which answer you get:
+
+- A set with `D ≤ T` throughout gets the same numbers as 1.2.1.
+- A set whose response passed its own period gets a larger, correct number, and
+  may move from `Bounded` to `ExceedsDeadline`. If a set became unschedulable
+  on upgrade, it was unschedulable before.
+- `passes_utilisation_bound` now returns `false` for sets outside Liu and
+  Layland's preconditions. It was never safe to act on those answers.
+
 ## [1.2.1] — 2026-08-27
 
 The first release with a frozen API, and the first that analyses task sets

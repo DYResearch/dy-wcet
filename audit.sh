@@ -190,8 +190,8 @@ CHK=$(cnt 'checked_(add|mul|div|sub)' src/lib.rs)
 note "checked arithmetic call sites: $CHK"
 
 UNSCH=$(cntf 'Response::Unbounded(' src/lib.rs)
-note "Response::Unschedulable is returned from $UNSCH distinct sites"
-# The doc for Unschedulable must enumerate its causes, not gesture at them.
+note "Response::Unbounded is returned from $UNSCH distinct sites"
+# The doc for Unbounded must enumerate its causes, not gesture at them.
 # Until 0.1.2 it named two of four, and no test could have caught that.
 DOCCAUSES=$(awk '/^pub enum Unbounded/,/^}/' src/lib.rs 2>/dev/null | grep -cE '^\s*[A-Z][A-Za-z]*[,(]' | head -1)
 DOCCAUSES=${DOCCAUSES:-0}
@@ -200,7 +200,7 @@ if [ "$DOCCAUSES" -ge 4 ]; then
   pass "an unbounded answer names which of $DOCCAUSES things went wrong"
 else
   fail "Unbounded carries only $DOCCAUSES reason(s)"
-  grep -nE 'return Response::Unschedulable|^\s*Response::Unschedulable\s*$' src/lib.rs | sed 's/^/        /'
+  grep -nE 'return Response::Unbounded|^\s*Response::Unbounded\s*\(' src/lib.rs | sed 's/^/        /'
   note "a cause that is real but undocumented is the defect class this repo exists for"
 fi
 
@@ -298,7 +298,7 @@ for f in $MD; do
                printf "        %s:%d heading jumps h%d → h%d\n", F, NR, prev, lvl
              prev=lvl }
   ' "$f"
-  grep -qP '\t' "$f" 2>/dev/null && warn "$f contains tabs"
+  grep -q "$(printf '\t')" "$f" 2>/dev/null && warn "$f contains tabs"
   grep -qE ' +$' "$f" 2>/dev/null && warn "$f has trailing whitespace"
   grep -q $'\r' "$f" 2>/dev/null && warn "$f has CRLF line endings"
   long=$(awk 'length>100 && $0 !~ /^\|/ && $0 !~ /http/ {n++} END{print n+0}' "$f")
@@ -320,18 +320,35 @@ note "Cargo.toml declares: $DECL"
 sect "G · Toolchain gates"
 
 if [ "$RUN_CARGO" = "1" ] && command -v cargo >/dev/null 2>&1; then
+  # A component that is absent and a gate that fails are different answers.
+  # Reporting the second when the first happened is the defect this file
+  # exists to catch, and it did exactly that for clippy until 2.0.0.
   run() { printf '  %s···%s  %s\n' "$D" "$Z" "$2"
+          comp=$(printf '%s' "$1" | awk '{print $2}')
+          case "$comp" in
+            fmt|clippy)
+              if ! cargo "$comp" --version >/dev/null 2>&1; then
+                note "$2: cargo $comp is not installed here, so this gate did not run"
+                return 0
+              fi ;;
+          esac
           if eval "$1" >"$SCRATCH/gate" 2>&1; then pass "$2"
           else fail "$2"; tail -12 "$SCRATCH/gate" | sed 's/^/        /'; fi; }
   run "cargo fmt --all -- --check"                     "cargo fmt"
   run "cargo clippy --all-targets -- -D warnings"      "cargo clippy, warnings denied"
   run "cargo test"                                     "cargo test"
   run "RUSTDOCFLAGS='-D warnings' cargo doc --no-deps" "cargo doc, warnings denied"
+  # Whether a cross-target is installed on this machine says nothing about the
+  # repository. Where rustup exists the target is one command away and the
+  # absence is actionable; on a toolchain without rustup - Termux, a distro
+  # rustc - it is not, and CI is what verifies the no_std claim either way.
   if rustup target list --installed 2>/dev/null | grep -q thumbv7em-none-eabihf; then
     run "cargo build --release --target thumbv7em-none-eabihf" "no_std build for thumbv7em-none-eabihf"
-  else
-    warn "thumbv7em-none-eabihf not installed — the no_std claim is unverified here"
+  elif command -v rustup >/dev/null 2>&1; then
+    warn "thumbv7em-none-eabihf is not installed, so the no_std build did not run"
     note "rustup target add thumbv7em-none-eabihf"
+  else
+    note "no rustup here, so the no_std build did not run; CI runs it on every push"
   fi
   run "cargo package --list --allow-dirty" "cargo package builds a file list"
   if cargo package --list --allow-dirty 2>/dev/null | grep -qi '^LICENSE'; then
