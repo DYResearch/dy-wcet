@@ -28,3 +28,71 @@ keywords:
   - worst-case execution time
   - release jitter
   - embedded
+
+references:
+  - type: article
+    title: "Finding response times in a real-time system"
+    authors:
+      - family-names: Joseph
+        given-names: M.
+      - family-names: Pandya
+        given-names: P.
+    journal: "The Computer Journal"
+    volume: 29
+    issue: 5
+    start: 390
+    end: 395
+    year: 1986
+    notes: "The recurrence this crate solves."
+  - type: conference-paper
+    title: "Fixed priority scheduling of periodic task sets with arbitrary deadlines"
+    authors:
+      - family-names: Lehoczky
+        given-names: J. P.
+    collection-title: "Proceedings of the 11th IEEE Real-Time Systems Symposium"
+    start: 201
+    end: 209
+    year: 1990
+    notes: "The level-i busy period, and why a deadline past the period needs every job in it examined. Version 2.0.0 implements this; earlier versions did not."
+  - type: article
+    title: "An extendible approach for analyzing fixed priority hard real-time tasks"
+    authors:
+      - family-names: Tindell
+        given-names: K.
+      - family-names: Burns
+        given-names: A.
+      - family-names: Wellings
+        given-names: A. J.
+    journal: "Real-Time Systems"
+    volume: 6
+    issue: 2
+    start: 133
+    end: 151
+    year: 1994
+    notes: "Release jitter in the recurrence."
+  - type: report
+    title: "Optimal priority assignment and feasibility of static priority tasks with arbitrary start times"
+    authors:
+      - family-names: Audsley
+        given-names: N. C.
+    institution:
+      name: "University of York"
+    number: "YCS-164"
+    year: 1991
+    notes: "The priority assignment this crate returns."
+  - type: article
+    title: "Priority inheritance protocols: an approach to real-time synchronization"
+    authors:
+      - family-names: Sha
+        given-names: L.
+      - family-names: Rajkumar
+        given-names: R.
+      - family-names: Lehoczky
+        given-names: J. P.
+    journal: "IEEE Transactions on Computers"
+    volume: 39
+    issue: 9
+    start: 1175
+    end: 1185
+    year: 1990
+    notes: "Why the blocking term is one number and not a sum."

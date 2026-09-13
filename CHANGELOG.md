@@ -21,6 +21,18 @@
   sets whose recurrence takes more iterations than any such limit admits, which
   is most of them: 67.9% take more than two, with an observed maximum of 126.
 
+### Attribution
+
+- **Lehoczky and Tindell were not named.** The recurrence has been credited to
+  Joseph and Pandya since 0.1.0, and the priority assignment to Audsley. The
+  busy-period analysis that makes a deadline past the period sound is
+  Lehoczky's, RTSS 1990; the jitter terms are Tindell, Burns and Wellings,
+  1994. Neither appeared anywhere in the crate, in the release whose headline
+  feature is their result. Both are now named in `README.md`, in the doc
+  comment on the function that implements them, and in a formal `references`
+  block in `CITATION.cff` alongside Joseph & Pandya, Audsley, and Sha et al.
+  for the blocking term.
+
 ### CI
 
 - **The step named "No floating point anywhere" checked one file.** It read

@@ -10,21 +10,47 @@ on:
 permissions:
   contents: read
 
+# One job per gate.
+#
+# Until this release every gate but the proofs ran inside a single job named
+# "Tests, lints, the no_std build, and the claims audit". Fourteen steps, one
+# red cross, and nothing in the summary saying which of them failed. They also
+# ran in sequence inside one budget, so a Python script taking half a second
+# waited behind a release build of the crate.
+#
+# Split, the summary names the failure, and the gates needing no Rust report in
+# under a minute instead of last.
+
 jobs:
-  check:
-    name: Tests, lints, the no_std build, and the claims audit
+  claims:
+    name: Claims and prose agree with the repository
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-          targets: thumbv7em-none-eabihf
+      - name: Every stated number matches its source
+        # The repository makes claims about the crate. Until 0.1.2 nothing
+        # checked them, and four were wrong. This is that check.
+        run: ./audit.sh --no-cargo
 
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
+      - name: The prose is measured, not asserted
+        # Stock phrases, em-dash density, opener repetition and sentence-length
+        # variance, against a baseline taken from this repository's own writing.
+        # The 0.1.2 drafts failed it before they passed it.
+        run: python3 tools/prose.py
+
+  analysis:
+    name: The analysis, checked a second way
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - name: The recurrence agrees with a simulated schedule
+        # The analysis solved two ways. The recurrence, and the schedule it
+        # claims to describe, run job by job from the critical instant. Sets
+        # with deadlines past the period are included, which is where the
+        # single-job form was wrong until 2.0.0.
+        run: python3 tools/differential.py
 
       - name: The paper tests carry their derivations
         # A test asserting a number without showing where the number came from
@@ -43,16 +69,6 @@ jobs:
           print(f"  {len(fns)} paper tests, each with its derivation")
           PY
 
-      - name: no_std against a bare-metal target
-        # Verified rather than asserted. A crate that claims no_std and has
-        # never been built for a target without std is a crate claiming
-        # something nobody checked.
-        run: cargo build --release --target thumbv7em-none-eabihf
-
-      - run: cargo doc --no-deps
-        env:
-          RUSTDOCFLAGS: -D warnings
-
       - name: No floating point anywhere
         # The property the crate exists for. A single f64 would make the
         # results compiler-dependent, and the promise is that they are not.
@@ -69,24 +85,71 @@ jobs:
           fi
           echo "  no floating point in src, tests or kani"
 
-      - name: Every stated number matches its source
-        # The repository makes claims about the crate. Until 0.1.2 nothing
-        # checked them, and four were wrong. This is that check.
-        run: ./audit.sh --no-cargo
+  fmt:
+    name: Formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: rustfmt }
+      - run: cargo fmt --all -- --check
 
-      - name: The recurrence agrees with a simulated schedule
-        # The analysis solved two ways. The recurrence, and the schedule it
-        # claims to describe, run job by job from the critical instant. Sets
-        # with deadlines past the period are included, which is where the
-        # single-job form was wrong until 2.0.0.
-        run: python3 tools/differential.py
+  clippy:
+    name: Lints
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: clippy }
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets -- -D warnings
 
-      - name: The prose is measured, not asserted
-        # Stock phrases, em-dash density, opener repetition and sentence-length
-        # variance, against a baseline taken from this repository's own writing.
-        # The 0.1.2 drafts failed it before they passed it.
-        run: python3 tools/prose.py
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test
 
+  no_std:
+    name: Bare-metal build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: thumbv7em-none-eabihf }
+      - uses: Swatinem/rust-cache@v2
+      - name: no_std against a bare-metal target
+        # Verified rather than asserted. A crate that claims no_std and has
+        # never been built for a target without std is a crate claiming
+        # something nobody checked.
+        run: cargo build --release --target thumbv7em-none-eabihf
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  package:
+    name: The published archive
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
       - name: The published archive carries its licence text
         # Cargo.toml has declared a dual licence since 0.1.0. Until 0.1.2 the
         # archive shipped neither file.
@@ -109,23 +172,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+
+  proofs:
+    name: Kani harnesses
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
       - uses: dtolnay/rust-toolchain@stable
 
       # Building kani-verifier from source takes most of this job's budget and
-      # produces the same binary every time. Cached on the pinned version so a
-      # run that changes nothing about the proofs does not rebuild the checker.
-      - uses: actions/cache@v4
+      # produces the same binary every time. The driver and the CBMC toolchain
+      # that `cargo kani setup` fetches are cached together: caching one without
+      # the other leaves a driver that cannot find its checker.
+      - id: kani-cache
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/cargo-kani
             ~/.cargo/bin/kani-driver
             ~/.kani
-          key: kani-${{ runner.os }}-0.56.0
+          key: kani-${{ runner.os }}-v1
 
       # Through 1.2.1 the README said "run them with cargo kani" and the
       # harnesses were not declared anywhere, so a clean clone ran nothing.
       # The badge counted proofs that no gate enforced. This is that gate.
-      - run: command -v cargo-kani || cargo install --locked kani-verifier
-      - run: cargo kani setup
+      - if: steps.kani-cache.outputs.cache-hit != 'true'
+        run: |
+          cargo install --locked kani-verifier
+          cargo kani setup
+
       - run: cargo kani

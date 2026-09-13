@@ -447,6 +447,8 @@ impl TaskSet {
     /// R    = max R(q)   over q = 0 … ⌈(L + J)/T⌉ − 1
     /// ```
     ///
+    /// The busy-period form is Lehoczky's (RTSS 1990); the jitter terms are
+    /// Tindell, Burns and Wellings (Real-Time Systems, 1994).
     /// Joseph and Pandya's 1986 form is the `q = 0` line of this without `J`,
     /// and it is sound exactly while the answer stays inside the task's own
     /// period. Past that the task's next job is released before the current one

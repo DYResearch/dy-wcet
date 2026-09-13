@@ -221,6 +221,21 @@ Both implementations are by the same author, so agreement is not
 independence — a shared misreading of the recurrence agrees with itself
 perfectly. That is why every figure there is derived rather than asserted.
 
+Since 2.0.0 there is a second and better check, which does not share the
+recurrence at all. [`tools/differential.py`](tools/differential.py) runs the
+schedule the recurrence claims to describe: jobs released from the critical
+instant, the processor taking the highest-priority ready one, completions
+measured. Over 5,347 generated sets carrying jitter, blocking and deadlines
+past the period, the simulation never exceeded the computed bound and equalled
+it every time — sound, and on that sample exact rather than merely safe. It
+runs in under half a second, so it is a gate on every push rather than an
+occasional exercise.
+
+Its first draft reported 83 unsound results. All 83 were a defect in the
+simulation, which merged a task's queued jobs into one counter and recorded the
+completion of the last as the completion of the first. The crate was right and
+the check was wrong, which is the ordinary outcome and worth saying out loud.
+
 ---
 
 ## What it does not do
@@ -306,6 +321,28 @@ does not interfere with a response completing at 6.
 The recurrence is short enough that being confident about it is easy and being
 right about it is not. That is the whole reason this exists, and the case is
 now [`three_tasks_settling_at_six`](tests/on_paper.rs).
+
+## Where the analysis comes from
+
+None of the mathematics here is mine. The crate is an implementation, and the
+people who worked it out should be named next to the parts they are responsible
+for rather than gestured at in a bibliography.
+
+| The part | Whose result it is |
+|:--|:--|
+| The recurrence itself, `R = C + Σ ⌈R/T⌉·C` | **Joseph & Pandya, 1986.** *Finding response times in a real-time system.* The Computer Journal 29(5), 390–395 |
+| Deadlines past the period, and why one job is not enough | **Lehoczky, 1990.** *Fixed priority scheduling of periodic task sets with arbitrary deadlines.* RTSS'90, 201–209. The level-*i* busy period, and the result that every job released inside it must be examined — which is what 2.0.0 added and what the versions before it got wrong |
+| Release jitter in the same recurrence | **Tindell, Burns & Wellings, 1994.** *An extendible approach for analyzing fixed priority hard real-time tasks.* Real-Time Systems 6(2), 133–151. The `⌈(w + J)/T⌉` form, and `R = w + J − qT` |
+| Optimal priority assignment | **Audsley, 1991.** *Optimal priority assignment and feasibility of static priority tasks with arbitrary start times.* Technical Report YCS-164, University of York |
+| One blocking term per job | **Sha, Rajkumar & Lehoczky, 1990.** *Priority inheritance protocols: an approach to real-time synchronization.* IEEE Transactions on Computers 39(9), 1175–1185. The reason `blocking_us` is a single number rather than a sum |
+
+Lehoczky and Tindell were missing from this list until 2.0.0, which is the
+release whose headline feature is their result. That was the wrong order.
+
+What is mine is the implementation, the refusals, the integer arithmetic, and
+the tests — including the ones that found my own errors.
+
+---
 
 ## Licence
 
