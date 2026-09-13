@@ -56,17 +56,30 @@ jobs:
       - name: No floating point anywhere
         # The property the crate exists for. A single f64 would make the
         # results compiler-dependent, and the promise is that they are not.
+        #
+        # This checked src/lib.rs alone while the step was named "anywhere".
+        # A test or a harness carrying a float would have passed a gate whose
+        # name says it would not, which is the same defect audit.sh exists to
+        # find in the prose.
         run: |
-          if grep -nE '\bf32\b|\bf64\b' src/lib.rs | grep -v '^\s*//' | grep -v 'in `f64`'; then
+          if grep -rnE '\bf32\b|\bf64\b' src tests kani \
+               | grep -v '^\s*[^:]*:[0-9]*:\s*//' | grep -v 'in `f64`'; then
             echo "::error::floating point in a crate whose point is integer arithmetic"
             exit 1
           fi
-          echo "  no floating point"
+          echo "  no floating point in src, tests or kani"
 
       - name: Every stated number matches its source
         # The repository makes claims about the crate. Until 0.1.2 nothing
         # checked them, and four were wrong. This is that check.
         run: ./audit.sh --no-cargo
+
+      - name: The recurrence agrees with a simulated schedule
+        # The analysis solved two ways. The recurrence, and the schedule it
+        # claims to describe, run job by job from the critical instant. Sets
+        # with deadlines past the period are included, which is where the
+        # single-job form was wrong until 2.0.0.
+        run: python3 tools/differential.py
 
       - name: The prose is measured, not asserted
         # Stock phrases, em-dash density, opener repetition and sentence-length
@@ -99,9 +112,20 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
       - uses: dtolnay/rust-toolchain@stable
 
+      # Building kani-verifier from source takes most of this job's budget and
+      # produces the same binary every time. Cached on the pinned version so a
+      # run that changes nothing about the proofs does not rebuild the checker.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-kani
+            ~/.cargo/bin/kani-driver
+            ~/.kani
+          key: kani-${{ runner.os }}-0.56.0
+
       # Through 1.2.1 the README said "run them with cargo kani" and the
       # harnesses were not declared anywhere, so a clean clone ran nothing.
       # The badge counted proofs that no gate enforced. This is that gate.
-      - run: cargo install --locked kani-verifier
+      - run: command -v cargo-kani || cargo install --locked kani-verifier
       - run: cargo kani setup
       - run: cargo kani

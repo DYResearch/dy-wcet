@@ -1,6 +1,35 @@
 # Changelog
 
-## [2.0.0] — 2026-09-12
+## [2.0.0] — 2026-09-13
+
+### The analysis, checked a second way
+
+- **`tools/differential.py` runs the schedule the recurrence claims to
+  describe.** Jobs are released from the critical instant, the processor runs
+  the highest-priority ready one, and completions are measured. Over 5,347
+  comparisons across sets with release jitter, blocking and deadlines past the
+  period, the simulation never exceeded the computed bound, and equalled it
+  every time. Sound, and on this sample exact rather than merely safe.
+
+  An early draft reported 83 unsound results. All 83 were a defect in the
+  simulation, which merged a task's queued jobs into one counter and recorded
+  the completion of the last as the completion of the first. That is noted in
+  the file, because a differential check that has never been wrong about itself
+  has not been used hard enough.
+
+  The Kani harnesses bound the analysis inside an unwind limit. This covers the
+  sets whose recurrence takes more iterations than any such limit admits, which
+  is most of them: 67.9% take more than two, with an observed maximum of 126.
+
+### CI
+
+- **The step named "No floating point anywhere" checked one file.** It read
+  `src/lib.rs` and nothing else, so a float in a test or a harness would have
+  passed a gate whose name says otherwise. It now reads `src`, `tests` and
+  `kani`.
+- **The Kani job rebuilt the model checker on every run.** `kani-verifier` is
+  now cached against its pinned version, which returns most of that job's
+  thirty-minute budget to the proofs it is supposed to be running.
 
 ### Housekeeping in this release
 
