@@ -20,7 +20,7 @@
 //! chosen from, so the number in the attribute has a reason behind it that a
 //! reader can re-run in under a second.
 
-use dy_wcet::{Response, Task, TaskSet, BUSY_PERIOD_CAP, MAX_TASKS};
+use dy_wcet::{Response, Task, TaskSet, BUSY_PERIOD_CAP, ITERATION_CAP, MAX_TASKS};
 
 /// `⌈(busy + jitter) / period⌉`, the count the per-job loop runs to.
 fn jobs_in_window(busy: u64, jitter: u64, period: u64) -> u64 {
@@ -73,25 +73,56 @@ fn without_the_narrowing_the_per_job_loop_reaches_the_cap() {
     );
 }
 
-/// Every loop in `response_of` walks the whole task array, so no unwind bound
-/// below `MAX_TASKS + 1` can close one, however few tasks are pushed.
+/// What actually has to be unwound, and why no bound could ever reach it.
+///
+/// 3.0.5 said the floor was `MAX_TASKS + 1` — the walk over the task array —
+/// and raised every bound to eighteen. That was the wrong cause, and the
+/// evidence was already in the log: the two unwinding assertions were at
+/// `src/lib.rs:545` and `src/lib.rs:600`, and those lines are
+/// `for _ in 0..ITERATION_CAP` and `for q in 0..jobs_in_window`. Constant
+/// bounds of ten thousand and one thousand and twenty-four, the second nested
+/// inside the first. CBMC unwinds a loop to its largest possible trip count
+/// before it will assert anything past it, so eighteen was as hopeless as five.
+///
+/// The fix is the caps, not the bounds: `cfg(kani)` reduces them, and the
+/// declared unwind values have to clear the reduced ones.
 #[test]
-fn the_array_walk_is_the_floor_under_every_bound() {
-    let mut s = TaskSet::new();
-    s.push(Task::new(1, 1_000)).unwrap();
-    assert_eq!(s.len(), 1);
+fn the_shipped_caps_are_past_any_unwind_bound_and_the_kani_caps_are_not() {
+    // At the shipped configuration these are the trip counts a proof would
+    // have to unwind. Stated as numbers so the impossibility is visible.
+    assert_eq!(ITERATION_CAP, 10_000);
+    assert_eq!(BUSY_PERIOD_CAP, 1_024);
+    assert_eq!(MAX_TASKS, 16);
 
-    // One task, and the iteration still ranges over sixteen slots.
-    assert_eq!(s.utilisation_through(usize::MAX), s.utilisation_ppm());
-    assert_eq!(MAX_TASKS, 16, "the floor under the bounds moved");
+    let src = include_str!("../src/lib.rs");
+    for name in ["ITERATION_CAP", "BUSY_PERIOD_CAP", "MAX_TASKS"] {
+        let reduced = src
+            .split("#[cfg(kani)]")
+            .skip(1)
+            .find_map(|chunk| {
+                let line = chunk
+                    .lines()
+                    .find(|l| l.contains(&format!("pub const {name}")))?;
+                line.rsplit('=')
+                    .next()?
+                    .trim()
+                    .trim_end_matches(';')
+                    .parse::<u64>()
+                    .ok()
+            })
+            .unwrap_or_else(|| panic!("no cfg(kani) reduction for {name}"));
+        assert!(
+            reduced <= 8,
+            "{name} is {reduced} under cfg(kani); a solver has to unwind it"
+        );
+    }
 
-    // The declared bounds must clear it. Read from the file rather than
-    // repeated here, so the two cannot drift.
-    let src = include_str!("../kani/response_bounds.rs");
-    let bounds: Vec<u64> = src
+    // And every declared bound clears the reduced floor.
+    let harness = include_str!("../kani/response_bounds.rs");
+    let bounds: Vec<u64> = harness
         .match_indices("#[kani::unwind(")
         .map(|(i, _)| {
-            src[i + 15..]
+            harness[i + 15..]
                 .split(')')
                 .next()
                 .unwrap()
@@ -100,13 +131,9 @@ fn the_array_walk_is_the_floor_under_every_bound() {
         })
         .collect();
     assert!(bounds.len() >= 6, "found only {} bounds", bounds.len());
-
-    let touching_response_of = bounds.iter().filter(|&&b| b > MAX_TASKS as u64).count();
     assert!(
-        touching_response_of >= 4,
-        "only {touching_response_of} harnesses clear MAX_TASKS; the ones that call \
-         response_of cannot close its array walk below {}",
-        MAX_TASKS + 1
+        bounds.iter().filter(|&&b| b >= 8).count() >= 5,
+        "bounds {bounds:?} do not clear the reduced caps"
     );
 }
 

@@ -85,7 +85,16 @@
 /// theoretical limit — it is the point past which a fixed-priority set on one
 /// core stops being analysable by hand, and an analysis nobody can check by
 /// hand is an analysis nobody checks.
+#[cfg(not(kani))]
 pub const MAX_TASKS: usize = 16;
+
+/// Four under `cfg(kani)`. Every loop in [`TaskSet::response_of`] walks this
+/// array, and each walk sits inside the two bounded loops above, so the array
+/// length multiplies everything else. Four keeps a set with a genuine
+/// higher-priority interference term — which is the thing the proofs are
+/// about — at a size a solver finishes.
+#[cfg(kani)]
+pub const MAX_TASKS: usize = 4;
 
 /// One hundred per cent utilisation, expressed in parts per million.
 ///
@@ -102,12 +111,41 @@ pub const FULL_UTILISATION_PPM: u64 = 1_000_000;
 /// future change to that function, and its size is measured rather than
 /// assumed: every set tried, including sixteen tasks at 0.9 utilisation and
 /// two at 0.9999, settles in two iterations.
+#[cfg(not(kani))]
 pub const ITERATION_CAP: u32 = 10_000;
+
+/// Six under `cfg(kani)`, and this is the reason the proofs could not run.
+///
+/// CBMC has to unwind a loop to its largest possible trip count before it can
+/// assert anything past it. `for _ in 0..ITERATION_CAP` has a constant bound
+/// of ten thousand, and the loop over `jobs_in_window` a constant bound of
+/// [`BUSY_PERIOD_CAP`]; the second is nested inside the first. No value of
+/// `#[kani::unwind]` reaches that, and raising the number from five to
+/// eighteen — which is what 3.0.5 did — moved the failure not at all. The two
+/// unwinding assertions the runner reported were at `src/lib.rs:545` and
+/// `src/lib.rs:600`, which are exactly these two loops and not, as 3.0.5
+/// claimed, the walk over the task array.
+///
+/// Reducing the caps under `cfg(kani)` is what makes them reachable, and it
+/// narrows what the proofs establish: the same code with a smaller refusal
+/// threshold. The arithmetic, the recurrence and the refusal paths are
+/// identical; what shrinks is how far the search may run before the analysis
+/// gives up. That is a scope, so it is written here rather than left in a
+/// build flag.
+#[cfg(kani)]
+pub const ITERATION_CAP: u32 = 6;
 
 /// How many jobs of one task a level-i busy period may contain before the
 /// analysis refuses it. A busy period longer than this is a set no reader
 /// could check by hand, which is the same reason MAX_TASKS is sixteen.
+#[cfg(not(kani))]
 pub const BUSY_PERIOD_CAP: u64 = 1_024;
+
+/// Four under `cfg(kani)`. See [`ITERATION_CAP`] for why the shipped value
+/// cannot be unwound; this is the loop at `src/lib.rs:600` that reported the
+/// second unwinding assertion.
+#[cfg(kani)]
+pub const BUSY_PERIOD_CAP: u64 = 4;
 
 /// A periodic or sporadic task, in microseconds throughout.
 ///

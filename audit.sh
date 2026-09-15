@@ -130,7 +130,10 @@ else
   note "no tests badge in README"
 fi
 
-MAXT=$(grep -oE 'MAX_TASKS: usize = [0-9]+' src/lib.rs 2>/dev/null | grep -oE '[0-9]+$')
+# Two definitions now: the shipped one and the reduced cfg(kani) one. The
+# shipped value is the first, and taking both turned this check into a WARN
+# the moment the second appeared.
+MAXT=$(grep -oE 'MAX_TASKS: usize = [0-9]+' src/lib.rs 2>/dev/null | grep -oE '[0-9]+$' | head -1)
 if [ -n "$MAXT" ]; then
   w=$(numword "$MAXT")
   grep -qiE "\b($w|$MAXT)\b tasks maximum|maximum.{0,12}\b($w|$MAXT)\b tasks" README.md \
@@ -258,24 +261,50 @@ if [ -f kani/response_bounds.rs ]; then
     fail "the variant harness unwinds $VBOUND times but iterates $VARIANTS variants"
     note "too small a bound is an unwinding assertion failure, not a smaller proof"
   fi
-  # Every loop in response_of walks the sixteen-slot task array, so a harness
-  # that calls it cannot close that loop below MAX_TASKS + 1 — whatever the set
-  # actually holds. Four harnesses declared five, six, six and three, and none
-  # of them could ever have verified. Nobody knew: the job ran all six as one
-  # command and was cancelled before any reported.
-  MT=$(grep -oE 'pub const MAX_TASKS: usize = [0-9_]+' src/lib.rs | grep -oE '[0-9_]+$' | tr -d _)
-  MT=${MT:-16}
-  TOOSMALL=$(awk -v mt="$MT" '
-    /#\[kani::unwind\(/ { match($0, /[0-9]+/); b = substr($0, RSTART, RLENGTH) }
-    /^fn /                { name = $2; body = 1; next }
-    body && /response_of\(/ && b != "" && b+0 <= mt+0 { print name; b = "" }
-    /^}/                  { body = 0 }
-  ' kani/response_bounds.rs | sort -u)
-  if [ -z "$TOOSMALL" ]; then
-    pass "every harness calling response_of unwinds more than MAX_TASKS ($MT)"
+  # The proofs need the caps reduced, and the unwind bounds must clear them.
+  #
+  # 3.0.5 said no bound below MAX_TASKS + 1 could close the array walk and
+  # raised every bound to eighteen. That was the wrong cause: the two unwinding
+  # assertions the runner reported were at src/lib.rs:545 and :600, which are
+  # `for _ in 0..ITERATION_CAP` and `for q in 0..jobs_in_window` — constant
+  # bounds of 10 000 and 1 024, the second nested in the first. CBMC must unwind
+  # a loop to its largest possible trip count, so no value of kani::unwind ever
+  # reaches those, and raising 5 to 18 moved nothing.
+  #
+  # What makes them reachable is cfg(kani) reducing the caps. This checks the
+  # reduction exists and that every declared bound clears it, which is the
+  # invariant the numbers actually have to satisfy.
+  # Read the value after the `=`, not the first digits on the line: the first
+  # `[0-9_]+` on `pub const ITERATION_CAP: u32 = 6;` is the underscore inside
+  # the identifier, which this extraction returned until it was checked against
+  # the file instead of against the intention.
+  kcap() {
+    grep -A1 '^#\[cfg(kani)\]$' src/lib.rs \
+      | grep "pub const $1" \
+      | grep -oE '= *[0-9_]+' | tr -cd '0-9'
+  }
+  ITER_K=$(kcap ITERATION_CAP)
+  BUSY_K=$(kcap BUSY_PERIOD_CAP)
+  TASKS_K=$(kcap MAX_TASKS)
+  if [ -z "$ITER_K" ] || [ -z "$BUSY_K" ] || [ -z "$TASKS_K" ]; then
+    fail "no cfg(kani) reduction for ITERATION_CAP / BUSY_PERIOD_CAP / MAX_TASKS"
+    note "at the shipped caps these loops need 10001 and 1025 unwindings; no bound reaches that"
   else
-    fail "harness(es) below the array-walk floor of $((MT + 1)): $(echo $TOOSMALL | tr '\n' ' ')"
-    note "the loop over the task array cannot close below MAX_TASKS + 1"
+    FLOOR=$ITER_K
+    [ "$BUSY_K" -gt "$FLOOR" ] && FLOOR=$BUSY_K
+    [ "$TASKS_K" -gt "$FLOOR" ] && FLOOR=$TASKS_K
+    FLOOR=$((FLOOR + 1))
+    TOOSMALL=$(awk -v fl="$FLOOR" '
+      /#\[kani::unwind\(/ { match($0, /\(([0-9]+)\)/); b = substr($0, RSTART + 1, RLENGTH - 2) }
+      /^fn /                { name = $2; body = 1; next }
+      body && /response_of\(/ && b != "" && b + 0 < fl + 0 { print name; b = "" }
+      /^}/                  { body = 0 }
+    ' kani/response_bounds.rs | sort -u)
+    if [ -z "$TOOSMALL" ]; then
+      pass "cfg(kani) caps ${ITER_K}/${BUSY_K}/${TASKS_K}; every response_of harness clears $FLOOR"
+    else
+      fail "harness(es) below the cfg(kani) floor of $FLOOR: $(echo $TOOSMALL | tr '\n' ' ')"
+    fi
   fi
 
   NAMED=$(grep -oE 'AnalysisFailure::[A-Z][A-Za-z]*' kani/response_bounds.rs | sort -u | wc -l)

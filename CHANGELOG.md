@@ -1,5 +1,43 @@
 # Changelog
 
+## [3.0.6] — 2026-09-15
+
+The harness failures were never about the unwind numbers, and three releases
+spent raising them were spent on the wrong thing.
+
+### Fixed
+
+- **The two loops CBMC could not close are `for _ in 0..ITERATION_CAP` and
+  `for q in 0..jobs_in_window`.** The runner said so: unwinding assertions at
+  `src/lib.rs:545` and `src/lib.rs:600`. Those lines are those loops, with
+  constant bounds of ten thousand and one thousand and twenty-four, the second
+  nested inside the first. CBMC unwinds a loop to its largest possible trip
+  count before it will assert anything past it, so no value of
+  `#[kani::unwind]` ever reaches them and raising five to eighteen moved
+  nothing at all.
+
+  3.0.5 read line 545 as the walk over the task array and shipped a floor of
+  `MAX_TASKS + 1`, a gate enforcing it and a test recording it. The line
+  numbers were in the log the whole time. All three are corrected here.
+
+- **`cfg(kani)` reduces the caps** — `ITERATION_CAP` 10 000 → 6,
+  `BUSY_PERIOD_CAP` 1 024 → 4, `MAX_TASKS` 16 → 4 — which is what makes the
+  loops reachable at all. This narrows what the proofs establish: the same
+  code, the same arithmetic, the same recurrence and refusal paths, with a
+  smaller threshold before the analysis gives up. That is a scope on the
+  claim, so it is written beside the constants rather than left in a build
+  flag.
+
+- **`audit.sh` read the underscore in `ITERATION_CAP` as its value.** The
+  extraction took the first `[0-9_]+` on the line, which is the one inside the
+  identifier. It reads the value after the `=` now. And the `MAX_TASKS = 16`
+  check had quietly degraded to a warning the moment a second definition
+  appeared, because it took both matches.
+
+- The gate now checks the invariant that actually has to hold: a `cfg(kani)`
+  reduction exists, and every harness calling `response_of` declares a bound
+  above the largest reduced cap.
+
 ## [3.0.5] — 2026-09-15
 
 ### Fixed
