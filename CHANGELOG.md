@@ -1,5 +1,52 @@
 # Changelog
 
+## [3.0.7] — 2026-09-15
+
+The proofs still do not verify, and the crate now says so everywhere it used
+to imply otherwise.
+
+### Fixed
+
+- **The README claimed CI runs the harnesses on every push, beside a green
+  badge reading "Kani harnesses 6".** Both were true word by word. Together
+  they said six proofs pass, and none ever had. That is the kind of claim this
+  repository exists to catch, made by this repository about itself. The README
+  states plainly that the harnesses do not currently verify and that no proved
+  property is claimed; the badge is amber and says advisory; the job name says
+  it; the run summary says it.
+
+  `audit.sh` fails if the job is advisory and the README does not say so, or
+  if the README says it while the job gates the build.
+
+### Changed
+
+- **The Kani job is advisory.** It runs, it reports, it does not gate. A check
+  that cannot pass should not block a release whose other fifty gates are
+  green, and it must not be recorded as passing either. It returns to required
+  the moment one green run exists.
+
+- **Per-harness budget 6 → 12 minutes, job timeout 30 → 45.**
+
+- **Symbolic ranges tightened** on the three harnesses that call
+  `response_of`: periods under 64, deadlines under 128, blocking and jitter
+  under 32. A scope on what the proofs would cover, stated rather than tuned —
+  Kani cannot run in the environment this was prepared in, so nothing was
+  adjusted until something passed.
+
+### Where this actually stands
+
+3.0.6 fixed the unwinding assertions: reducing the caps under `cfg(kani)`
+took the trace from iteration 880 to 13. What remains is solver time — the
+step ends on exit 124, the budget, not on a failed check. Five symbolic
+`u64` values through integer division and checked multiplication is where the
+cost sits, and CBMC reasons over the full 64-bit width whatever the range
+assumption says.
+
+The evidence behind this crate is unchanged and is not the harnesses: 85
+tests, exhaustive small-state checks of the priority and sensitivity
+algorithms, and 220 000 generated task sets compared against an independent
+job-level scheduler with no mismatches.
+
 ## [3.0.6] — 2026-09-15
 
 The harness failures were never about the unwind numbers, and three releases

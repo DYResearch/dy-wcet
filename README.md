@@ -9,7 +9,7 @@
 [![unsafe](https://img.shields.io/badge/unsafe-forbidden-3ecf8e?style=flat-square&labelColor=0e141d)](src/lib.rs)
 [![deps](https://img.shields.io/badge/dependencies-0-3ecf8e?style=flat-square&labelColor=0e141d)](Cargo.toml)
 [![tests](https://img.shields.io/badge/tests-85-3ecf8e?style=flat-square&labelColor=0e141d)](#verify-it-yourself)
-[![proofs](https://img.shields.io/badge/Kani%20harnesses-6-3ecf8e?style=flat-square&labelColor=0e141d)](kani/)
+[![proofs](https://img.shields.io/badge/Kani%20harnesses-6%20(advisory%2C%20not%20verifying)-d98b3a?style=flat-square&labelColor=0e141d)](kani/)
 [![Licence](https://img.shields.io/badge/Apache--2.0%20OR%20MIT-475569?style=flat-square&labelColor=0e141d)](#licence)
 
 [Two tasks, one number](#two-tasks-one-number) · [Use](#use) · [Verify](#verify-it-yourself) · [Limits](#what-it-does-not-do) · [Case study](#case-study) · [Timing audit](#timing-audit) · [Bounty](#the-bounty)
@@ -191,8 +191,25 @@ generator is thirty lines of seeded linear congruence and adds no dependency,
 because a dependency tree pulled in to produce pseudo-random `u64` would cost
 this crate the one thing it advertises.
 
-Six Kani harnesses in [`kani/`](kani/) bound what the tests sample. Run them
-with `cargo kani`; CI runs them on every push, which it did not before 2.0.0.
+Six Kani harnesses in [`kani/`](kani/) are written to bound what the tests
+sample. **They do not currently verify, and this crate does not claim any
+proved property.** CI runs them on every push as an advisory job: it reports
+what happened and does not gate the build.
+
+What is wrong with them is worth stating precisely, because "the proofs are
+red" and "the proofs are slow" are different facts. Two loops in
+`response_of` — the fixed-point search and the per-job walk — carry constant
+bounds of ten thousand and one thousand and twenty-four, the second nested in
+the first, and CBMC must unwind a loop to its largest possible trip count
+before it asserts anything past it. No `#[kani::unwind]` value reaches that.
+Since 3.0.6 `cfg(kani)` reduces those caps, which closed the unwinding
+assertions; what remains is solver time, and a harness ends on its budget
+rather than on a failed check.
+
+So the evidence behind this crate is the 85 tests, the exhaustive small-state
+checks, and the 220 000-case differential campaign against an independent
+scheduler. The harnesses are work in progress and are labelled that way in the
+badge above, in the job name, and in the run summary.
 
 Four of those cases are worth reading even if you never use this crate:
 

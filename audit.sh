@@ -261,6 +261,23 @@ if [ -f kani/response_bounds.rs ]; then
     fail "the variant harness unwinds $VBOUND times but iterates $VARIANTS variants"
     note "too small a bound is an unwinding assertion failure, not a smaller proof"
   fi
+  # The README must not claim verification while the job is advisory.
+  #
+  # The line it carried until 3.0.7 said CI runs the harnesses on every push,
+  # which was true, next to a green badge reading "Kani harnesses 6", which
+  # read as six passing proofs. They had never passed. A claim that is true
+  # word by word and false in what it conveys is the kind this repository
+  # exists to catch.
+  ADVISORY=$(grep -c 'continue-on-error: true' .github/workflows/ci.yml || echo 0)
+  CLAIMS=$(grep -ci 'do not currently verify' README.md || echo 0)
+  if [ "$ADVISORY" -gt 0 ] && [ "$CLAIMS" -eq 0 ]; then
+    fail "the Kani job is advisory and the README does not say so"
+  elif [ "$ADVISORY" -eq 0 ] && [ "$CLAIMS" -gt 0 ]; then
+    fail "the README says the harnesses do not verify, but the job gates the build"
+  else
+    pass "the README and the Kani job agree about whether the proofs verify"
+  fi
+
   # The proofs need the caps reduced, and the unwind bounds must clear them.
   #
   # 3.0.5 said no bound below MAX_TASKS + 1 could close the array walk and
