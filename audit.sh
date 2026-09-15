@@ -244,6 +244,20 @@ if [ -f kani/response_bounds.rs ]; then
     note "an undeclared bound cannot be documented, and the spec asks for it to be"
   fi
   VARIANTS=$(awk '/^pub enum AnalysisFailure/,/^}/' src/lib.rs | grep -cE '^\s*[A-Z][A-Za-z]*[,(]')
+  # The variant harness loops once per variant, so its unwind bound has to
+  # exceed the count. 3.0.2 rewrote it to iterate six and left the bound at
+  # two — an unwinding assertion failure, which CBMC reports as the harness
+  # failing rather than as a bound being too small. Covering every variant and
+  # declaring a bound were both checked; that they agree was not.
+  VBOUND=$(awk '/#\[kani::unwind\(/{b=$0} /^fn every_unbounded_variant_fails_every_deadline/{print b}' \
+            kani/response_bounds.rs | grep -oE '[0-9]+' | head -1)
+  VBOUND=${VBOUND:-0}
+  if [ "$VBOUND" -gt "$VARIANTS" ]; then
+    pass "the variant harness unwinds $VBOUND times for $VARIANTS variants"
+  else
+    fail "the variant harness unwinds $VBOUND times but iterates $VARIANTS variants"
+    note "too small a bound is an unwinding assertion failure, not a smaller proof"
+  fi
   NAMED=$(grep -oE 'AnalysisFailure::[A-Z][A-Za-z]*' kani/response_bounds.rs | sort -u | wc -l)
   if [ "$NAMED" -ge "$VARIANTS" ]; then
     pass "the harnesses name all $VARIANTS refusal reasons"

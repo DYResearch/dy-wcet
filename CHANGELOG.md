@@ -1,5 +1,33 @@
 # Changelog
 
+## [3.0.4] — 2026-09-15
+
+### Fixed
+
+- **A loop over six variants with an unwind bound of two.** 3.0.2 rewrote
+  `every_unbounded_variant_fails_every_deadline` to iterate all six refusal
+  variants and left `#[kani::unwind(2)]` on it. A loop needs one more unwinding
+  than it has iterations, so CBMC raises an unwinding assertion and reports the
+  harness as *failing* — not as a bound being too small, which is what it is.
+  Every run failed identically, for the same reason, and the run summary said
+  only that Kani had not passed.
+
+  The bound is eight. `audit.sh` ties it to the variant count and fails when
+  they disagree: putting the two back makes it say "the variant harness unwinds
+  2 times but iterates 6 variants".
+
+  Both halves were already gated. That the harness names every variant was
+  checked. That every harness declares a bound was checked. That the bound and
+  the count agree was not, and this sat in the gap between two correct checks.
+
+### Changed
+
+- **Harness outcomes go to the run summary, not only the log.** 3.0.3 printed
+  them to the log, and the extractor shipped with it matched the echoed command
+  block instead of the output — so the fact a reader had come for was still one
+  grep away, behind an indirection that existed for no reason. The run page now
+  carries a table of harness, outcome and time.
+
 ## [3.0.3] — 2026-09-15
 
 ### Changed

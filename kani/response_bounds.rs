@@ -71,8 +71,14 @@ fn a_bounded_response_never_exceeds_its_deadline() {
 ///
 /// The `match` below has no wildcard arm on purpose: a seventh variant will
 /// not compile until this list grows with it.
+/// The bound must exceed the number of variants: the loop below runs once per
+/// variant and needs one more unwinding to close. 3.0.2 gave this harness a
+/// bound of two while rewriting it to iterate six, which is an unwinding
+/// assertion failure — CBMC reports it as the harness failing, not as a
+/// timeout, and it fails every run identically. `audit.sh` ties this number to
+/// the variant count now, so the two cannot drift apart again.
 #[kani::proof]
-#[kani::unwind(2)]
+#[kani::unwind(8)]
 fn every_unbounded_variant_fails_every_deadline() {
     let d: u64 = kani::any();
     let v: u64 = kani::any();
