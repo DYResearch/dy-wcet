@@ -21,6 +21,18 @@ permissions:
 # Split, the summary names the failure, and the gates needing no Rust report in
 # under a minute instead of last.
 
+# Every `uses:` in this file is a commit SHA, enforced by the `workflow` job.
+#
+# 3.0.0 shipped that gate without doing what it enforces: `dtolnay/rust-
+# toolchain@stable` and `Swatinem/rust-cache@v2` had been floating since before
+# it, and the first run of the new job failed on ten of them. A tag or a branch
+# is a name its owner can repoint; a workflow that resolves `@stable` at run
+# time runs whatever that name means today, and this repository's whole claim
+# is that the same input gives the same answer.
+#
+# The SHAs are resolved from the upstream refs, not copied from memory:
+#   git ls-remote https://github.com/dtolnay/rust-toolchain stable
+#   git ls-remote https://github.com/Swatinem/rust-cache refs/tags/v2.8.0
 jobs:
   claims:
     name: Claims and prose agree with the repository
@@ -139,7 +151,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch
         with: { components: rustfmt }
       - run: cargo fmt --all -- --check
 
@@ -149,9 +161,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch
         with: { components: clippy }
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@8cbdedb5103daa674dcf46d3590fe06a76645684  # v2.8.0
       - run: cargo clippy --all-targets -- -D warnings
 
   test:
@@ -160,8 +172,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch
+      - uses: Swatinem/rust-cache@8cbdedb5103daa674dcf46d3590fe06a76645684  # v2.8.0
       - run: cargo test
 
   no_std:
@@ -170,9 +182,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch
         with: { targets: thumbv7em-none-eabihf }
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@8cbdedb5103daa674dcf46d3590fe06a76645684  # v2.8.0
       - name: no_std against a bare-metal target
         # Verified rather than asserted. A crate that claims no_std and has
         # never been built for a target without std is a crate claiming
@@ -185,8 +197,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch
+      - uses: Swatinem/rust-cache@8cbdedb5103daa674dcf46d3590fe06a76645684  # v2.8.0
       - run: cargo doc --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
@@ -197,7 +209,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch
       - name: The published archive carries its licence text
         # Cargo.toml has declared a dual licence since 0.1.0. Until 0.1.2 the
         # archive shipped neither file.
@@ -228,7 +240,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch
 
       # Building kani-verifier from source takes most of this job's budget and
       # produces the same binary every time. The driver and the CBMC toolchain

@@ -1,5 +1,31 @@
 # Changelog
 
+## [3.0.1] — 2026-09-15
+
+3.0.0 added a gate requiring every action to be pinned to a commit, and shipped
+without doing what the gate enforces. Its first run failed on ten references.
+
+### Fixed
+
+- **`dtolnay/rust-toolchain@stable` and `Swatinem/rust-cache@v2` are pinned**,
+  at seven and four call sites. Both had been floating since before 3.0.0; the
+  new `workflow` job is simply the first thing that looked. A tag or a branch is
+  a name its owner can repoint, so a workflow resolving `@stable` at run time
+  runs whatever that name means on the day — which is the opposite of the claim
+  this repository makes about its own analysis.
+
+  The SHAs come from the upstream refs rather than from memory:
+  `git ls-remote https://github.com/dtolnay/rust-toolchain stable` and
+  `git ls-remote https://github.com/Swatinem/rust-cache refs/tags/v2.8.0`.
+
+### Note on 3.0.0
+
+The 3.0.0 commit is signed but shows as unverified on GitHub. The signature is
+sound; the commit author address is not one GitHub knows belongs to the account,
+so it has nothing to check the key against. Adding and verifying that address in
+the account settings marks the existing commit verified retroactively — GitHub
+computes that at display time, so no history has to be rewritten.
+
 ## [3.0.0] — 2026-09-15
 
 Breaking. The enum that says why an analysis produced no number is renamed and
