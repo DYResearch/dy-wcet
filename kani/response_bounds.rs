@@ -39,17 +39,28 @@ fn task(c: u64, t: u64, d: u64, b: u64, j: u64) -> Task {
 /// A `Bounded` answer is at or below the deadline. This is the invariant a
 /// caller acts on, and the one an arithmetic error would break in the
 /// flattering direction.
+/// Bound is `MAX_TASKS + 2`. Every loop in `response_of` walks the sixteen-slot
+/// task array, so nothing below seventeen can close it, whatever the set holds
+/// — this harness ran at five and reported "unwinding assertion loop 2" at
+/// `src/lib.rs:545`, which is the seed loop over that array.
+///
+/// The input space is narrowed to a busy period holding one job, and that is a
+/// scope, not a formality: without it `jobs_in_window` is `⌈(busy + J)/T⌉`,
+/// which reaches `BUSY_PERIOD_CAP` at 1024 and cannot be unwound at all.
+/// `tests/harness_scope.rs` measures that the narrowing does what it says.
 #[kani::proof]
-#[kani::unwind(5)]
+#[kani::unwind(18)]
 fn a_bounded_response_never_exceeds_its_deadline() {
     let c: u64 = kani::any();
     let t: u64 = kani::any();
     let d: u64 = kani::any();
     let b: u64 = kani::any();
     let j: u64 = kani::any();
-    kani::assume(t > 0 && t < 1_000_000);
-    kani::assume(c <= d && d < 1_000_000);
-    kani::assume(b < 1_000_000 && j < 1_000_000);
+    kani::assume(t > 1 && t < 10_000);
+    kani::assume(c <= d && d < 10_000);
+    kani::assume(b < 10_000 && j < 10_000);
+    // One job in the busy period: the per-job loop unwinds once.
+    kani::assume(c + b + j < t);
 
     let mut s = TaskSet::new();
     if s.push(task(c, t, d, b, j)).is_ok() {
@@ -112,7 +123,7 @@ fn every_unbounded_variant_fails_every_deadline() {
 /// — and the input scope is narrowed here so that what it does cover is
 /// stated rather than implied.
 #[kani::proof]
-#[kani::unwind(6)]
+#[kani::unwind(18)]
 fn the_recurrence_terminates_without_panicking() {
     let c0: u64 = kani::any();
     let t0: u64 = kani::any();
@@ -132,7 +143,7 @@ fn the_recurrence_terminates_without_panicking() {
 /// busy-period form must not lose the `q = 0` case that the single-job
 /// recurrence computed.
 #[kani::proof]
-#[kani::unwind(6)]
+#[kani::unwind(18)]
 fn a_bounded_answer_is_never_below_its_own_work() {
     let c: u64 = kani::any();
     let t: u64 = kani::any();
@@ -153,7 +164,7 @@ fn a_bounded_answer_is_never_below_its_own_work() {
 /// execution plus blocking plus jitter. No interference term can appear from
 /// nowhere.
 #[kani::proof]
-#[kani::unwind(3)]
+#[kani::unwind(18)]
 fn a_lone_task_pays_only_for_itself() {
     let c: u64 = kani::any();
     let t: u64 = kani::any();

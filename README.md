@@ -8,7 +8,7 @@
 [![no_std](https://img.shields.io/badge/no__std-yes-3ecf8e?style=flat-square&labelColor=0e141d)](src/lib.rs)
 [![unsafe](https://img.shields.io/badge/unsafe-forbidden-3ecf8e?style=flat-square&labelColor=0e141d)](src/lib.rs)
 [![deps](https://img.shields.io/badge/dependencies-0-3ecf8e?style=flat-square&labelColor=0e141d)](Cargo.toml)
-[![tests](https://img.shields.io/badge/tests-81-3ecf8e?style=flat-square&labelColor=0e141d)](#verify-it-yourself)
+[![tests](https://img.shields.io/badge/tests-85-3ecf8e?style=flat-square&labelColor=0e141d)](#verify-it-yourself)
 [![proofs](https://img.shields.io/badge/Kani%20harnesses-6-3ecf8e?style=flat-square&labelColor=0e141d)](kani/)
 [![Licence](https://img.shields.io/badge/Apache--2.0%20OR%20MIT-475569?style=flat-square&labelColor=0e141d)](#licence)
 

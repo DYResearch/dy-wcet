@@ -1,5 +1,36 @@
 # Changelog
 
+## [3.0.5] — 2026-09-15
+
+### Fixed
+
+- **Four Kani harnesses carried unwind bounds that could never close.** Every
+  loop in `response_of` walks the sixteen-slot task array, so nothing below
+  `MAX_TASKS + 1` can close one, however few tasks the set holds. The declared
+  bounds were five, six, six and three.
+
+  None of them had ever verified. Nobody knew, because the job ran all six as a
+  single `cargo kani` command and was cancelled at its thirty-minute limit
+  before any of them reported. The per-harness budget added in the previous
+  release did not create these failures — it took thirty-one seconds to name
+  one. All four are eighteen now, and `audit.sh` fails on any harness that calls
+  `response_of` with a bound at or below the floor.
+
+- **The failing harness needed a scope, not a larger number.** Its inputs let
+  `jobs_in_window` — `⌈(busy + J)/T⌉` — reach `BUSY_PERIOD_CAP` at 1024, which
+  no solver will unwind. The space is narrowed to a busy period holding one
+  job. That is a statement about what the proof covers, so it is written down
+  rather than left in an `assume`.
+
+### Added
+
+- **`tests/harness_scope.rs` measures the narrowing rather than asserting it.**
+  Over a hundred thousand points of the narrowed space the per-job loop runs
+  exactly once; outside it the same expression exceeds the cap; and the space
+  still yields thousands of bounded answers, so it has not been emptied to make
+  the proof cheap. The number in the attribute now has a measurement behind it
+  that re-runs in five seconds.
+
 ## [3.0.4] — 2026-09-15
 
 ### Fixed

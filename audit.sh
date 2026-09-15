@@ -258,6 +258,26 @@ if [ -f kani/response_bounds.rs ]; then
     fail "the variant harness unwinds $VBOUND times but iterates $VARIANTS variants"
     note "too small a bound is an unwinding assertion failure, not a smaller proof"
   fi
+  # Every loop in response_of walks the sixteen-slot task array, so a harness
+  # that calls it cannot close that loop below MAX_TASKS + 1 — whatever the set
+  # actually holds. Four harnesses declared five, six, six and three, and none
+  # of them could ever have verified. Nobody knew: the job ran all six as one
+  # command and was cancelled before any reported.
+  MT=$(grep -oE 'pub const MAX_TASKS: usize = [0-9_]+' src/lib.rs | grep -oE '[0-9_]+$' | tr -d _)
+  MT=${MT:-16}
+  TOOSMALL=$(awk -v mt="$MT" '
+    /#\[kani::unwind\(/ { match($0, /[0-9]+/); b = substr($0, RSTART, RLENGTH) }
+    /^fn /                { name = $2; body = 1; next }
+    body && /response_of\(/ && b != "" && b+0 <= mt+0 { print name; b = "" }
+    /^}/                  { body = 0 }
+  ' kani/response_bounds.rs | sort -u)
+  if [ -z "$TOOSMALL" ]; then
+    pass "every harness calling response_of unwinds more than MAX_TASKS ($MT)"
+  else
+    fail "harness(es) below the array-walk floor of $((MT + 1)): $(echo $TOOSMALL | tr '\n' ' ')"
+    note "the loop over the task array cannot close below MAX_TASKS + 1"
+  fi
+
   NAMED=$(grep -oE 'AnalysisFailure::[A-Z][A-Za-z]*' kani/response_bounds.rs | sort -u | wc -l)
   if [ "$NAMED" -ge "$VARIANTS" ]; then
     pass "the harnesses name all $VARIANTS refusal reasons"
