@@ -263,4 +263,57 @@ jobs:
           cargo install --locked kani-verifier
           cargo kani setup
 
-      - run: cargo kani
+      # One harness at a time, each with its own budget.
+      #
+      # `cargo kani` ran all six as a single command. When it stalled, the job
+      # hit its thirty-minute limit and was cancelled after six thousand lines
+      # of CBMC unwinding trace — without once naming the harness that was
+      # stuck. From the summary, "cancelled" and "disproved" look the same, and
+      # neither says where to look.
+      #
+      # The loop in that trace is `Flatten<Take<slice::Iter<Option<Task>>>>::next`
+      # at iteration 880: the task array walked *inside* the response-time
+      # recurrence. The flatten is cheap — sixteen elements — and the loop
+      # around it is what multiplies, up to ITERATION_CAP. 3.0.2 gave the two
+      # harnesses that had no unwind bound one each, which is probably the
+      # whole of it. This is what will say so either way.
+      #
+      # Six minutes is far above the seconds a bounded harness takes and far
+      # below the point where the job dies. The names come from the source, not
+      # from a second list here that would drift away from it.
+      - name: Run each harness under its own budget
+        run: |
+          set -uo pipefail
+          harnesses=$(python3 - <<'PY'
+          import pathlib, re
+          src = pathlib.Path("kani/response_bounds.rs").read_text()
+          for m in re.finditer(r"#\[kani::proof\][\s\S]{0,200}?\nfn (\w+)", src):
+              print(m.group(1))
+          PY
+          )
+          count=$(echo "$harnesses" | grep -c .)
+          echo "harnesses ($count): $(echo "$harnesses" | tr '\n' ' ')"
+          [ "$count" -ge 6 ] || { echo "::error::found only $count harnesses; the extraction is wrong"; exit 1; }
+          failed=""
+          for h in $harnesses; do
+            echo "::group::$h"
+            start=$(date +%s)
+            timeout 360 cargo kani --harness "$h"
+            rc=$?
+            took=$(( $(date +%s) - start ))
+            if [ $rc -eq 0 ]; then
+              echo "  $h verified in ${took}s"
+            elif [ $rc -eq 124 ]; then
+              echo "::error::$h exceeded its 6 minute budget — it did not fail, it did not finish"
+              failed="$failed $h(timeout)"
+            else
+              echo "::error::$h failed with exit $rc after ${took}s"
+              failed="$failed $h(rc=$rc)"
+            fi
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::harnesses not verified:$failed"
+            exit 1
+          fi
+          echo "all $count harnesses verified"

@@ -1,5 +1,31 @@
 # Changelog
 
+## [3.0.3] — 2026-09-15
+
+### Changed
+
+- **The Kani job runs one harness at a time, each with its own budget.**
+  `cargo kani` ran all six as a single command. When it stalled, the job hit its
+  thirty-minute limit and was cancelled after six thousand lines of CBMC
+  unwinding trace, without once naming the harness that was stuck. From the
+  summary, "cancelled" and "disproved" look identical, and neither says where to
+  look — which made the one piece of information worth having the one piece that
+  was missing.
+
+  Six minutes per harness is far above the seconds a bounded one takes and far
+  below the point where the job dies. The three outcomes are now distinct in the
+  log: verified with a time, failed with an exit code, or exceeded its budget —
+  it did not fail, it did not finish. The names are read out of
+  `kani/response_bounds.rs` rather than listed again in the workflow, where a
+  second list would drift away from the first.
+
+  The loop in that trace is `Flatten<Take<slice::Iter<Option<Task>>>>::next` at
+  iteration 880: the task array walked *inside* the response-time recurrence.
+  The flatten is cheap at sixteen elements; the loop around it multiplies, up to
+  `ITERATION_CAP`. 3.0.3 does not fix that — 3.0.2 did, by giving both
+  unbounded harnesses a declared bound. This makes the next stall name itself
+  instead of being inferred from a cancelled job.
+
 ## [3.0.2] — 2026-09-15
 
 The proof layer, checked the way everything else here is checked.
