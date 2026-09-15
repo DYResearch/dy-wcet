@@ -1,5 +1,33 @@
 # Changelog
 
+## [3.0.2] — 2026-09-15
+
+The proof layer, checked the way everything else here is checked.
+
+### Fixed
+
+- **A harness named "every variant" asserted four of six.** 3.0.0 split
+  `IterationLimit` and `BusyPeriodLimit` out of `NonConvergent` and left
+  `every_unbounded_variant_fails_every_deadline` listing the four that existed
+  before it. A proof covering two thirds of what its name claims is worse than
+  no proof, because the name is what gets repeated. It iterates all six now and
+  carries a `match` with no wildcard arm, so a seventh variant will not compile
+  until the list grows with it.
+
+  Nothing caught it: `audit.sh` counted the variants declared in `src/lib.rs`,
+  never the ones a harness exercises. It counts both now — the same repair the
+  refusal-reason gate needed at 0.1.2, one layer up.
+
+- **Two harnesses declared no unwind bound.** `an_index_past_the_end_is_named`
+  fed a fully symbolic `usize` into `response_of` with no bound on the search,
+  and §13 of the release specification asks for every unwind bound to be
+  documented, which cannot be done for a bound that does not exist. Both are
+  declared. The index is constrained to just past `MAX_TASKS`, which is where
+  the claim lives; `usize::MAX` stays covered concretely by
+  `tests/adversarial.rs`, in under a second rather than in a solver.
+
+  `audit.sh` fails if a `#[kani::proof]` ever lacks a `#[kani::unwind]` again.
+
 ## [3.0.1] — 2026-09-15
 
 3.0.0 added a gate requiring every action to be pinned to a commit, and shipped

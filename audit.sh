@@ -224,6 +224,34 @@ else
   fi
 fi
 
+# Every Kani harness declares an unwind bound, and the variant harness names
+# every variant.
+#
+# Two harnesses had no bound at all, which §13 asks to be documented and which
+# cannot be done for a bound that does not exist; one of them fed a fully
+# symbolic usize into response_of. And the harness named "every variant fails
+# every deadline" checked four of six after 3.0.0 split the implementation
+# limits out of NonConvergent. This counts the variants in src/lib.rs against
+# the ones the harnesses name, because a proof quoted as covering everything
+# has to cover everything.
+if [ -f kani/response_bounds.rs ]; then
+  PROOFS=$(grep -c '#\[kani::proof\]' kani/response_bounds.rs)
+  BOUNDS=$(grep -c '#\[kani::unwind(' kani/response_bounds.rs)
+  if [ "$PROOFS" -eq "$BOUNDS" ]; then
+    pass "all $PROOFS Kani harnesses declare an unwind bound"
+  else
+    fail "$PROOFS Kani harness(es), $BOUNDS declared unwind bound(s)"
+    note "an undeclared bound cannot be documented, and the spec asks for it to be"
+  fi
+  VARIANTS=$(awk '/^pub enum AnalysisFailure/,/^}/' src/lib.rs | grep -cE '^\s*[A-Z][A-Za-z]*[,(]')
+  NAMED=$(grep -oE 'AnalysisFailure::[A-Z][A-Za-z]*' kani/response_bounds.rs | sort -u | wc -l)
+  if [ "$NAMED" -ge "$VARIANTS" ]; then
+    pass "the harnesses name all $VARIANTS refusal reasons"
+  else
+    fail "AnalysisFailure has $VARIANTS variants, the harnesses name $NAMED"
+  fi
+fi
+
 # every paper test carries its derivation — the CI rule, run locally
 if [ -f tests/on_paper.rs ] && command -v python3 >/dev/null 2>&1; then
   if python3 - <<'PY'

@@ -59,16 +59,43 @@ fn a_bounded_response_never_exceeds_its_deadline() {
     }
 }
 
-/// Every `AnalysisFailure` variant fails every deadline comparison. A caller that
-/// forgets to match on the reason still gets the safe answer.
+/// Every `AnalysisFailure` variant fails every deadline comparison. A caller
+/// that forgets to match on the reason still gets the safe answer.
+///
+/// 3.0.0 split `IterationLimit` and `BusyPeriodLimit` out of `NonConvergent`
+/// and left this harness asserting the four that existed before. The name says
+/// *every*, and a proof covering two thirds of what its name claims is worse
+/// than none, because the name is what gets repeated. `audit.sh` counted the
+/// variants in `src/lib.rs`, not the ones a harness exercises, so nothing saw
+/// it — the "named two of four" defect of 0.1.2, one layer up.
+///
+/// The `match` below has no wildcard arm on purpose: a seventh variant will
+/// not compile until this list grows with it.
 #[kani::proof]
+#[kani::unwind(2)]
 fn every_unbounded_variant_fails_every_deadline() {
     let d: u64 = kani::any();
     let v: u64 = kani::any();
-    assert!(!Response::Refused(AnalysisFailure::NonConvergent).meets(d));
-    assert!(!Response::Refused(AnalysisFailure::Overflow).meets(d));
-    assert!(!Response::Refused(AnalysisFailure::NoSuchTask).meets(d));
-    assert!(!Response::Refused(AnalysisFailure::ExceedsDeadline(v)).meets(d));
+
+    let all = [
+        AnalysisFailure::NonConvergent,
+        AnalysisFailure::IterationLimit,
+        AnalysisFailure::BusyPeriodLimit,
+        AnalysisFailure::Overflow,
+        AnalysisFailure::NoSuchTask,
+        AnalysisFailure::ExceedsDeadline(v),
+    ];
+    for why in all {
+        assert!(!Response::Refused(why).meets(d));
+        match why {
+            AnalysisFailure::NonConvergent
+            | AnalysisFailure::IterationLimit
+            | AnalysisFailure::BusyPeriodLimit
+            | AnalysisFailure::Overflow
+            | AnalysisFailure::NoSuchTask
+            | AnalysisFailure::ExceedsDeadline(_) => {}
+        }
+    }
 }
 
 /// `response_of` terminates and never panics. Overflow is refused rather than
@@ -139,10 +166,21 @@ fn a_lone_task_pays_only_for_itself() {
 
 /// An index past the end is named rather than guessed, and never reported as
 /// a bound.
+///
+/// The index was fully symbolic over `usize` and the harness carried no unwind
+/// bound: an unbounded value and an unbounded search together. Every other
+/// harness here declares its bound; these two did not, and §13 of the release
+/// specification asks for every bound to be documented — which cannot be done
+/// for a bound that does not exist.
+///
+/// Bounded to just past `MAX_TASKS`, which is where the claim lives: the last
+/// valid index, the first invalid one, and a few beyond. `usize::MAX` is
+/// covered concretely by `tests/adversarial.rs`, in under a second.
 #[kani::proof]
+#[kani::unwind(18)]
 fn an_index_past_the_end_is_named() {
     let i: usize = kani::any();
-    kani::assume(i > 0);
+    kani::assume(i > 0 && i <= dy_wcet::MAX_TASKS + 4);
     let s = TaskSet::new();
     assert!(s.response_of(i) == Response::Refused(AnalysisFailure::NoSuchTask));
 }
