@@ -15,7 +15,7 @@
 // Every expected value below is derived in the comment above it. A reader who
 // distrusts the implementation can settle each one with a pencil.
 
-use dy_wcet::{Rejected, Response, Task, TaskSet, Unbounded, BUSY_PERIOD_CAP, MAX_TASKS};
+use dy_wcet::{AnalysisFailure, Rejected, Response, Task, TaskSet, BUSY_PERIOD_CAP, MAX_TASKS};
 
 /// `first_failure` names the highest-priority task that misses, not the count
 /// of tasks that do, and not the last one.
@@ -43,7 +43,7 @@ fn first_failure_names_the_task_rather_than_counting_them() {
     assert_eq!(s.response_of(1), Response::Bounded(200));
     assert_eq!(
         s.response_of(2),
-        Response::Unbounded(Unbounded::ExceedsDeadline(800))
+        Response::Refused(AnalysisFailure::ExceedsDeadline(800))
     );
 
     assert_eq!(s.first_failure(), Some(2));
@@ -81,10 +81,15 @@ fn a_busy_period_past_the_cap_is_refused_and_not_enumerated() {
     over.push(Task::new(1, 1000).blocking(2_000_000).deadline(10_000_000))
         .unwrap();
 
+    // Under one percent utilisation, and until 3.0.0 this asserted
+    // `NonConvergent`, whose Display reads "utilisation exceeds one; no fixed
+    // point exists". The assertion two lines above says it does not. The busy
+    // period here closes; what the analysis declined to do is enumerate the
+    // jobs inside it, which is what `BusyPeriodLimit` now says.
     assert!(over.utilisation_ppm().unwrap() < 10_000);
     assert_eq!(
         over.response_of(1),
-        Response::Unbounded(Unbounded::NonConvergent)
+        Response::Refused(AnalysisFailure::BusyPeriodLimit)
     );
 
     let mut under = TaskSet::new();
@@ -115,10 +120,10 @@ fn a_bound_and_a_response_time_are_not_the_same_question() {
     s.push(Task::new(300, 2000).deadline(350)).unwrap();
 
     let r = s.response_of(1);
-    assert_eq!(r, Response::Unbounded(Unbounded::ExceedsDeadline(400)));
+    assert_eq!(r, Response::Refused(AnalysisFailure::ExceedsDeadline(400)));
     assert_eq!(r.bound(), None);
     assert_eq!(r.response_time(), Some(400));
-    assert_eq!(r.reason(), Some(Unbounded::ExceedsDeadline(400)));
+    assert_eq!(r.reason(), Some(AnalysisFailure::ExceedsDeadline(400)));
     assert!(!r.is_bounded());
     assert!(!r.meets(350));
     assert!(!r.meets(400));
@@ -130,7 +135,7 @@ fn a_bound_and_a_response_time_are_not_the_same_question() {
     assert_eq!(ok.reason(), None);
 
     // The refusals carry no number at all, and must not invent one.
-    let none = Response::Unbounded(Unbounded::NonConvergent);
+    let none = Response::Refused(AnalysisFailure::NonConvergent);
     assert_eq!(none.bound(), None);
     assert_eq!(none.response_time(), None);
 }
@@ -360,7 +365,10 @@ fn an_absent_task_is_named_rather_than_defaulted_at_every_entry_point() {
     let mut s = TaskSet::new();
     s.push(Task::new(100, 400)).unwrap();
 
-    assert_eq!(s.response_of(9), Response::Unbounded(Unbounded::NoSuchTask));
+    assert_eq!(
+        s.response_of(9),
+        Response::Refused(AnalysisFailure::NoSuchTask)
+    );
     assert_eq!(s.slack_of(9), None);
     assert_eq!(s.max_wcet_increase(9), None);
     assert_eq!(s.get(9), None);
@@ -372,6 +380,63 @@ fn an_absent_task_is_named_rather_than_defaulted_at_every_entry_point() {
     assert_eq!(empty.first_failure(), None);
     assert_eq!(
         empty.response_of(0),
-        Response::Unbounded(Unbounded::NoSuchTask)
+        Response::Refused(AnalysisFailure::NoSuchTask)
     );
+}
+
+/// `utilisation_through(usize::MAX)` panicked in debug and wrapped in release.
+///
+/// The wrap is the part worth a test. `index + 1` overflowed to zero, `take(0)`
+/// counted nothing, and the function returned `Some(0)` — no utilisation at all
+/// — for a set that was plainly busy. A caller pre-checking a set with that
+/// number would be told the processor was idle. The panic was the loud half of
+/// the same defect and the only half anyone would have noticed.
+#[test]
+fn utilisation_through_saturates_instead_of_wrapping() {
+    let mut s = TaskSet::new();
+    s.push(Task::new(1, 10)).unwrap();
+    s.push(Task::new(2, 100)).unwrap();
+
+    let all = s.utilisation_ppm().unwrap();
+    assert_eq!(all, 120_000);
+
+    // Deeper than any level that exists is still every task, not none of them.
+    assert_eq!(s.utilisation_through(usize::MAX), Some(all));
+    assert_eq!(s.utilisation_through(MAX_TASKS), Some(all));
+    assert_eq!(s.utilisation_through(usize::MAX - 1), Some(all));
+}
+
+/// The three refusals that used to arrive as `NonConvergent` are now distinct.
+///
+/// `NonConvergent` makes a claim about the mathematics: no fixed point exists.
+/// The other two say the implementation stopped — one at its iteration cap, one
+/// at its job-enumeration cap — and in both of those the fixed point may exist.
+/// A caller tuning a system needs to know which happened: one is answered by
+/// changing the task set, the other by raising a cap.
+#[test]
+fn an_implementation_limit_is_not_a_mathematical_claim() {
+    // Over-utilised: genuinely no fixed point.
+    let mut over = TaskSet::new();
+    over.push(Task::new(600, 1000)).unwrap();
+    over.push(Task::new(600, 1000)).unwrap();
+    assert_eq!(
+        over.response_of(1),
+        Response::Refused(AnalysisFailure::NonConvergent)
+    );
+
+    // Barely-loaded, huge blocking: the busy period closes, the job count is
+    // finite and known, and the analysis declines to enumerate it.
+    let mut capped = TaskSet::new();
+    capped.push(Task::new(1, 1000)).unwrap();
+    capped
+        .push(Task::new(1, 1000).blocking(2_000_000).deadline(10_000_000))
+        .unwrap();
+    assert!(capped.utilisation_ppm().unwrap() < 10_000);
+    assert_eq!(
+        capped.response_of(1),
+        Response::Refused(AnalysisFailure::BusyPeriodLimit)
+    );
+
+    // And the two do not compare equal, which is the whole point.
+    assert_ne!(over.response_of(1), capped.response_of(1));
 }

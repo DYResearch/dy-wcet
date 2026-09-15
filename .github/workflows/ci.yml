@@ -85,6 +85,54 @@ jobs:
           fi
           echo "  no floating point in src, tests or kani"
 
+  workflow:
+    name: The workflow file is unambiguous
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - name: No duplicate keys, and every action pinned to a commit
+        # A duplicate key is not a style question here. YAML resolves it
+        # silently to the last value, so the reviewer sees one job and the
+        # runner executes another, and whichever survives is an accident of
+        # ordering.
+        run: |
+          python3 - <<'PY'
+          import sys, yaml, pathlib
+
+          class Strict(yaml.SafeLoader):
+              pass
+
+          def no_duplicates(loader, node, deep=False):
+              seen, out = set(), {}
+              for k, v in node.value:
+                  key = loader.construct_object(k, deep=deep)
+                  if key in seen:
+                      print(f"::error::duplicate key {key!r} at line {k.start_mark.line + 1}")
+                      sys.exit(1)
+                  seen.add(key)
+                  out[key] = loader.construct_object(v, deep=deep)
+              return out
+
+          Strict.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, no_duplicates)
+
+          bad = 0
+          for path in sorted(pathlib.Path(".github/workflows").glob("*.yml")):
+              doc = yaml.load(path.read_text(), Loader=Strict)
+              for job_name, job in (doc.get("jobs") or {}).items():
+                  if not (job.get("steps") or []):
+                      print(f"::error::{path.name}: job {job_name} has no steps")
+                      bad = 1
+                  for step in job.get("steps") or []:
+                      uses = step.get("uses")
+                      if uses and "@" in uses:
+                          ref = uses.split("@", 1)[1]
+                          if len(ref) != 40 or any(c not in "0123456789abcdef" for c in ref):
+                              print(f"::error::{path.name}: {uses} is not pinned to a commit")
+                              bad = 1
+              print(f"  {path.name}: {len(doc.get('jobs') or {})} jobs, no duplicate keys")
+          sys.exit(bad)
+          PY
+
   fmt:
     name: Formatting
     runs-on: ubuntu-latest
@@ -167,12 +215,13 @@ jobs:
           echo "  tag $tag · manifest $man · changelog $log"
           test "$tag" = "$man" && test "$tag" = "$log"
 
-  proofs:
-    name: Kani harnesses
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-
+  # There were two `proofs:` keys here, the first with an empty `steps:`. YAML
+  # keeps the last duplicate silently, so the job that ran was the second one
+  # and the file looked fine. Had the order been the other way round, CI would
+  # have reported a green Kani job that executed nothing — a badge for proofs
+  # that never ran, which is the defect this repository already fixed once at
+  # 1.2.1 and reintroduced in its own workflow. The `workflow` job below now
+  # fails on a duplicate key rather than trusting the reader to spot one.
   proofs:
     name: Kani harnesses
     runs-on: ubuntu-latest
@@ -186,7 +235,7 @@ jobs:
       # that `cargo kani setup` fetches are cached together: caching one without
       # the other leaves a driver that cannot find its checker.
       - id: kani-cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.2.0
         with:
           path: |
             ~/.cargo/bin/cargo-kani

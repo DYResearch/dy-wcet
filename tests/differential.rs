@@ -97,7 +97,7 @@ fn the_busy_window_agrees_where_the_old_recurrence_was_sound_and_never_flatters_
             let old = old_response_of(&s, i);
             let new = match s.response_of(i) {
                 Response::Bounded(r) => Some(r),
-                Response::Unbounded(dy_wcet::Unbounded::ExceedsDeadline(r)) => Some(r),
+                Response::Refused(dy_wcet::AnalysisFailure::ExceedsDeadline(r)) => Some(r),
                 _ => None,
             };
 
@@ -155,7 +155,7 @@ fn a_response_past_its_own_period_pays_for_its_own_next_job() {
     assert_eq!(old_response_of(&s, 1), Some(9));
     assert_eq!(
         s.response_of(1),
-        Response::Unbounded(dy_wcet::Unbounded::ExceedsDeadline(11))
+        Response::Refused(dy_wcet::AnalysisFailure::ExceedsDeadline(11))
     );
     assert!(!s.is_schedulable());
     assert_eq!(s.slack_of(1), None);

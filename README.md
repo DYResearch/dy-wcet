@@ -8,7 +8,7 @@
 [![no_std](https://img.shields.io/badge/no__std-yes-3ecf8e?style=flat-square&labelColor=0e141d)](src/lib.rs)
 [![unsafe](https://img.shields.io/badge/unsafe-forbidden-3ecf8e?style=flat-square&labelColor=0e141d)](src/lib.rs)
 [![deps](https://img.shields.io/badge/dependencies-0-3ecf8e?style=flat-square&labelColor=0e141d)](Cargo.toml)
-[![tests](https://img.shields.io/badge/tests-70-3ecf8e?style=flat-square&labelColor=0e141d)](#verify-it-yourself)
+[![tests](https://img.shields.io/badge/tests-81-3ecf8e?style=flat-square&labelColor=0e141d)](#verify-it-yourself)
 [![proofs](https://img.shields.io/badge/Kani%20harnesses-6-3ecf8e?style=flat-square&labelColor=0e141d)](kani/)
 [![Licence](https://img.shields.io/badge/Apache--2.0%20OR%20MIT-475569?style=flat-square&labelColor=0e141d)](#licence)
 
@@ -80,7 +80,7 @@ machine.
 Above it the iteration climbs forever, and an implementation that stops after
 *n* rounds and returns the last value returns something that looks like an
 answer. This decides convergence from utilisation *before* iterating and
-returns `Unbounded::NonConvergent`, which fails every deadline comparison it is
+returns `AnalysisFailure::NonConvergent`, which fails every deadline comparison it is
 put into.
 
 **By wrapping.** Interference is a sum of ceilings of quotients, and it grows
@@ -94,7 +94,7 @@ overflow is reported as unschedulable.
 
 ```toml
 [dependencies]
-dy-wcet = "2.0"
+dy-wcet = "3.0"
 ```
 
 ```rust
@@ -106,7 +106,7 @@ set.push(Task::new(200, 1000).blocking(20).jitter(15).named("control"))?;
 
 match set.response_of(1) {
     Response::Bounded(r)   => println!("{r} µs"),        // 335
-    Response::Unbounded(w) => println!("no bound: {w}"),
+    Response::Refused(w) => println!("no bound: {w}"),
 }
 ```
 
@@ -117,14 +117,14 @@ An unbounded answer says which of four things happened, and the one that
 matters carries a number:
 
 ```rust
-use dy_wcet::{Response, Unbounded};
+use dy_wcet::{Response, AnalysisFailure};
 
 match set.response_of(1) {
     Response::Bounded(r) => println!("{r} µs, and it fits"),
-    Response::Unbounded(Unbounded::ExceedsDeadline(r)) => println!("{r} µs, and it does not"),
-    Response::Unbounded(Unbounded::NonConvergent)      => println!("over-utilised; no bound exists"),
-    Response::Unbounded(Unbounded::Overflow)           => println!("the arithmetic was refused"),
-    Response::Unbounded(Unbounded::NoSuchTask)         => println!("no task at that index"),
+    Response::Refused(AnalysisFailure::ExceedsDeadline(r)) => println!("{r} µs, and it does not"),
+    Response::Refused(AnalysisFailure::NonConvergent)      => println!("over-utilised; no bound exists"),
+    Response::Refused(AnalysisFailure::Overflow)           => println!("the arithmetic was refused"),
+    Response::Refused(AnalysisFailure::NoSuchTask)         => println!("no task at that index"),
 }
 ```
 

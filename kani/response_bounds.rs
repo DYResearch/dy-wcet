@@ -30,7 +30,7 @@
 //! the input space than the same numbers did before, and the recurrence
 //! harness below is rewritten against the new structure.
 
-use dy_wcet::{Response, Task, TaskSet, Unbounded};
+use dy_wcet::{AnalysisFailure, Response, Task, TaskSet};
 
 fn task(c: u64, t: u64, d: u64, b: u64, j: u64) -> Task {
     Task::new(c, t).deadline(d).blocking(b).jitter(j)
@@ -59,16 +59,16 @@ fn a_bounded_response_never_exceeds_its_deadline() {
     }
 }
 
-/// Every `Unbounded` variant fails every deadline comparison. A caller that
+/// Every `AnalysisFailure` variant fails every deadline comparison. A caller that
 /// forgets to match on the reason still gets the safe answer.
 #[kani::proof]
 fn every_unbounded_variant_fails_every_deadline() {
     let d: u64 = kani::any();
     let v: u64 = kani::any();
-    assert!(!Response::Unbounded(Unbounded::NonConvergent).meets(d));
-    assert!(!Response::Unbounded(Unbounded::Overflow).meets(d));
-    assert!(!Response::Unbounded(Unbounded::NoSuchTask).meets(d));
-    assert!(!Response::Unbounded(Unbounded::ExceedsDeadline(v)).meets(d));
+    assert!(!Response::Refused(AnalysisFailure::NonConvergent).meets(d));
+    assert!(!Response::Refused(AnalysisFailure::Overflow).meets(d));
+    assert!(!Response::Refused(AnalysisFailure::NoSuchTask).meets(d));
+    assert!(!Response::Refused(AnalysisFailure::ExceedsDeadline(v)).meets(d));
 }
 
 /// `response_of` terminates and never panics. Overflow is refused rather than
@@ -144,5 +144,5 @@ fn an_index_past_the_end_is_named() {
     let i: usize = kani::any();
     kani::assume(i > 0);
     let s = TaskSet::new();
-    assert!(s.response_of(i) == Response::Unbounded(Unbounded::NoSuchTask));
+    assert!(s.response_of(i) == Response::Refused(AnalysisFailure::NoSuchTask));
 }

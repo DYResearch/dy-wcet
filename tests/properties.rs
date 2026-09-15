@@ -9,7 +9,7 @@
 //! would cost this crate the one thing it advertises. The seed is fixed, so a
 //! failure here reproduces on any machine from the line number alone.
 
-use dy_wcet::{Response, Task, TaskSet, Unbounded, MAX_TASKS};
+use dy_wcet::{AnalysisFailure, Response, Task, TaskSet, MAX_TASKS};
 
 /// Numerical Recipes' LCG. Deterministic, and the constants are published.
 struct Rng(u64);
@@ -171,7 +171,7 @@ fn a_bounded_answer_always_meets_its_deadline_and_an_unbounded_one_never_does() 
                     assert!(r <= task.deadline_us);
                     assert!(s.response_of(i).meets(task.deadline_us));
                 }
-                Response::Unbounded(Unbounded::ExceedsDeadline(r)) => {
+                Response::Refused(AnalysisFailure::ExceedsDeadline(r)) => {
                     assert!(
                         r > task.deadline_us,
                         "ExceedsDeadline({r}) is not past {}",
@@ -179,7 +179,7 @@ fn a_bounded_answer_always_meets_its_deadline_and_an_unbounded_one_never_does() 
                     );
                     assert!(!s.response_of(i).meets(task.deadline_us));
                 }
-                Response::Unbounded(_) => {
+                Response::Refused(_) => {
                     assert!(!s.response_of(i).meets(u64::MAX));
                 }
             }

@@ -4,7 +4,7 @@
 
 //! The Liu and Layland pre-check, and the preconditions it depends on.
 
-use dy_wcet::{Response, Task, TaskSet, Unbounded};
+use dy_wcet::{AnalysisFailure, Response, Task, TaskSet};
 
 /// ```text
 /// hi (10, 100) D = T          lo (20, 200) D = 25
@@ -23,7 +23,7 @@ fn a_constrained_deadline_is_outside_the_bound_and_the_precheck_says_so() {
     assert!(s.utilisation_ppm().unwrap() < TaskSet::liu_layland_bound_ppm(2));
     assert_eq!(
         s.response_of(1),
-        Response::Unbounded(Unbounded::ExceedsDeadline(30))
+        Response::Refused(AnalysisFailure::ExceedsDeadline(30))
     );
     assert!(!s.is_schedulable());
     assert!(

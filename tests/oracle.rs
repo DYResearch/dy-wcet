@@ -10,7 +10,7 @@
 //! If the derived count is ever short, the analysis under-reports, which is
 //! the failure this whole exercise exists to refuse.
 
-use dy_wcet::{Response, Task, TaskSet, Unbounded, FULL_UTILISATION_PPM, ITERATION_CAP};
+use dy_wcet::{AnalysisFailure, Response, Task, TaskSet, FULL_UTILISATION_PPM, ITERATION_CAP};
 
 fn solve_w(s: &TaskSet, index: usize, base: u64) -> Option<u64> {
     let mut w = base;
@@ -111,7 +111,7 @@ fn the_derived_job_count_never_stops_short_of_the_busy_period() {
         for i in 0..s.iter().count() {
             let got = match s.response_of(i) {
                 Response::Bounded(r) => r,
-                Response::Unbounded(Unbounded::ExceedsDeadline(r)) => r,
+                Response::Refused(AnalysisFailure::ExceedsDeadline(r)) => r,
                 _ => {
                     skipped += 1;
                     continue;

@@ -1,5 +1,98 @@
 # Changelog
 
+## [3.0.0] — 2026-09-15
+
+Breaking. The enum that says why an analysis produced no number is renamed and
+split, because one of its variants was making a claim the code had not
+established.
+
+### Fixed
+
+- **`utilisation_through` returned a wrong number rather than refusing.**
+  `index + 1` was unchecked. In debug it panicked; in release it wrapped, and
+  `utilisation_through(usize::MAX)` answered `Some(0)` — no load at all — for a
+  set running at 12 %. Release is the profile an embedded caller ships, so the
+  quiet half was the shipped half. The depth is clamped to the array length
+  now, not saturated: a saturating add would read the same and `audit.sh` would
+  be right to object, since saturation elsewhere in this crate yields a
+  plausible wrong number instead of a refusal.
+
+- **`NonConvergent` was returned from four places and meant one of them.**
+  Utilisation above one is genuine non-convergence. The busy-period recurrence
+  reaching `ITERATION_CAP`, the per-job recurrence reaching it, and a busy
+  period holding more jobs than `BUSY_PERIOD_CAP` are all statements about this
+  implementation, not about the mathematics — and the last is the sharpest: the
+  busy period has *closed*, its length and job count are known and finite, and
+  the crate answered with a `Display` string reading "utilisation exceeds one;
+  no fixed point exists". The repository's own test proved it, asserting
+  utilisation below one percent two lines above asserting `NonConvergent`.
+
+  `Unbounded` is now `AnalysisFailure`, `Response::Unbounded` is
+  `Response::Refused`, and `IterationLimit` and `BusyPeriodLimit` are separate
+  from `NonConvergent`. One is answered by changing the task set; the others by
+  raising a cap. A caller could not previously tell which.
+
+- **Two `proofs:` keys in `.github/workflows/ci.yml`**, the first with an empty
+  `steps:`. YAML keeps the last silently, so the job that ran was an accident of
+  ordering; reversed, CI would have reported a green Kani job that executed
+  nothing — the badge-for-proofs-nobody-ran defect this repository fixed once at
+  1.2.1, reintroduced in its own workflow. A `workflow` job now fails on any
+  duplicate key, any stepless job and any action not pinned to a commit.
+
+- **`audit.sh` counted prose as code**, so a comment explaining why a forbidden
+  call was *not* used registered as a use of it. It now strips line comments
+  before counting.
+
+- **`audit.sh` reported zero for a type it could not find.** The refusal-reason
+  check grepped `Unbounded`; after the rename the awk range matched nothing and
+  the gate announced "carries only 0 reason(s)" — which reads as a finding about
+  the crate and was a finding about the grep. A missing type is now a refusal to
+  score rather than a score of nothing. Zero is the answer this repository is
+  least entitled to accept from a counter.
+
+### Added
+
+- **An independent reference scheduler** (`reference/scheduler.py`): job-level
+  discrete-event execution in arbitrary-precision integers, with no `ceil_div`,
+  no `W(q)`, no busy-period equation and no interference sum. It releases jobs,
+  preempts, and records completions.
+
+  This replaces an arrangement that could not have caught a defect in the crate.
+  `tools/differential.py` compared a Python transcription of the recurrence
+  against a Python simulation — two Python programs — and `tests/oracle.rs`
+  shares `solve_w`, the same ceiling division and the same jitter grouping with
+  the implementation it checks. Neither ever read the Rust.
+
+- **`examples/rta_probe.rs`** so the campaign runs against the crate itself, and
+  **`tools/campaign.py`** to drive it with boundary-weighted generation.
+
+- **`tests/exhaustive.rs`**: Audsley against every one of the `n!` orderings for
+  n ≤ 5, both directions — including that `None` really means no ordering works,
+  which is the optimality claim and the half a sampled test cannot reach; and
+  `max_wcet_increase` against a full linear scan, asserting it is the maximum
+  rather than merely feasible.
+
+- **`tests/adversarial.rs`**: every public entry point at `0`, `1`,
+  `u64::MAX - 1`, `u64::MAX`, and the indices around `MAX_TASKS`. Run in debug,
+  where a wrap panics, as well as release.
+
+- **`tools/verification_json.py`**, which records the stages that ran and marks
+  the ones that did not as `skipped` rather than omitting them.
+
+### Campaign
+
+220 000 generated task sets across four seeds, 621 862 individual response-time
+comparisons against the independent scheduler, no mismatches.
+
+The reference model also had to be bounded before it could be a gate. Its first
+version re-sorted the ready queue on every event, which made a long busy period
+quadratic; a 40 000-case run went half an hour without finishing on a workload
+that takes seconds for five hundred, reporting nothing while it did. "Still
+running" and "found nothing" look identical from outside. The queue is a heap
+and `EVENT_BUDGET` bounds the work per case — at 150 000 events rather than the
+two million tried first, because a budget for a gate has to bound time, not
+merely guarantee termination.
+
 ## [2.0.0] — 2026-09-13
 
 ### The analysis, checked a second way

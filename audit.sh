@@ -52,8 +52,14 @@ fi
 trap 'rm -rf "$SCRATCH"' EXIT INT TERM
 
 # grep -c prints 0 AND exits 1 on no match, so `|| echo 0` would print two zeros
-cnt() { n=$(grep -cE "$1" "$2" 2>/dev/null | head -1); echo "${n:-0}"; }
-cntf() { n=$(grep -cF "$1" "$2" 2>/dev/null | head -1); echo "${n:-0}"; }
+cnt() { n=$(code "$2" | grep -cE "$1" 2>/dev/null | head -1); echo "${n:-0}"; }
+cntf() { n=$(code "$2" | grep -cF "$1" 2>/dev/null | head -1); echo "${n:-0}"; }
+
+# What compiles, with line comments removed. Until 3.0.0 these gates grepped
+# the file as text, so a comment *explaining why* a forbidden call was not used
+# counted as a use of it. A checker that cannot tell code from prose about code
+# will eventually object to its own documentation, which it did.
+code() { sed 's://.*::' "$1" 2>/dev/null; }
 
 numword() {
   case "$1" in
@@ -189,19 +195,33 @@ done
 CHK=$(cnt 'checked_(add|mul|div|sub)' src/lib.rs)
 note "checked arithmetic call sites: $CHK"
 
-UNSCH=$(cntf 'Response::Unbounded(' src/lib.rs)
-note "Response::Unbounded is returned from $UNSCH distinct sites"
-# The doc for Unbounded must enumerate its causes, not gesture at them.
-# Until 0.1.2 it named two of four, and no test could have caught that.
-DOCCAUSES=$(awk '/^pub enum Unbounded/,/^}/' src/lib.rs 2>/dev/null | grep -cE '^\s*[A-Z][A-Za-z]*[,(]' | head -1)
-DOCCAUSES=${DOCCAUSES:-0}
-note "Unbounded distinguishes $DOCCAUSES reason(s); Unbounded is constructed at $UNSCH sites"
-if [ "$DOCCAUSES" -ge 4 ]; then
-  pass "an unbounded answer names which of $DOCCAUSES things went wrong"
+# The refusal enum must exist before anything is counted about it.
+#
+# This check used to grep for `Unbounded`. When 3.0.0 renamed the type to
+# `AnalysisFailure`, the awk range matched nothing, the count came back zero,
+# and the gate reported "carries only 0 reason(s)" — which reads as a finding
+# about the crate and was a finding about the grep. Zero is the answer this
+# repository is least entitled to accept from a counter, so a missing type is
+# now a refusal to score rather than a score of nothing.
+if ! grep -q '^pub enum AnalysisFailure' src/lib.rs; then
+  fail "no 'pub enum AnalysisFailure' in src/lib.rs — this gate is counting something that no longer exists"
+  note "rename the type here too, or the next zero will be believed"
 else
-  fail "Unbounded carries only $DOCCAUSES reason(s)"
-  grep -nE 'return Response::Unbounded|^\s*Response::Unbounded\s*\(' src/lib.rs | sed 's/^/        /'
-  note "a cause that is real but undocumented is the defect class this repo exists for"
+  UNSCH=$(cntf 'Response::Refused(' src/lib.rs)
+  note "Response::Refused is returned from $UNSCH distinct sites"
+  # The doc must enumerate its causes, not gesture at them. Until 0.1.2 it
+  # named two of four, and no test could have caught that. 3.0.0 split the
+  # implementation limits out of NonConvergent, so the floor is six.
+  DOCCAUSES=$(awk '/^pub enum AnalysisFailure/,/^}/' src/lib.rs 2>/dev/null | grep -cE '^\s*[A-Z][A-Za-z]*[,(]' | head -1)
+  DOCCAUSES=${DOCCAUSES:-0}
+  note "AnalysisFailure distinguishes $DOCCAUSES reason(s); refused at $UNSCH sites"
+  if [ "$DOCCAUSES" -ge 6 ]; then
+    pass "a refusal names which of $DOCCAUSES things went wrong"
+  else
+    fail "AnalysisFailure carries only $DOCCAUSES reason(s), expected at least six"
+    grep -nE 'Response::Refused\s*\(' src/lib.rs | sed 's/^/        /'
+    note "a cause that is real but undocumented is the defect class this repo exists for"
+  fi
 fi
 
 # every paper test carries its derivation — the CI rule, run locally

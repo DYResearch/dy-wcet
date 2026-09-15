@@ -1,6 +1,6 @@
 [package]
 name = "dy-wcet"
-version = "2.0.0"
+version = "3.0.0"
 edition = "2021"
 rust-version = "1.82"
 license = "Apache-2.0 OR MIT"
@@ -19,6 +19,10 @@ include = [
     "src/**/*.rs",
     "tests/**/*.rs",
     "kani/**/*.rs",
+    "examples/**/*.rs",
+    "reference/**/*.py",
+    "tools/**/*.py",
+    "audit.sh",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-APACHE",

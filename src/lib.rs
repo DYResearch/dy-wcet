@@ -22,14 +22,14 @@
 //! is at most one. Above it, the iteration climbs forever, and an
 //! implementation that caps the loop and returns the last value returns a
 //! number that looks like an answer. This one returns
-//! [`Unbounded::NonConvergent`], which fails every deadline comparison it is
+//! [`AnalysisFailure::NonConvergent`], which fails every deadline comparison it is
 //! put into.
 //!
 //! **Overflow.** Interference is a sum of ceilings of quotients, and on a long
 //! period with short tasks it grows fast. A wrapping add turns an
 //! unschedulable set into a schedulable one, which is the worst direction for
 //! an arithmetic error to go. Every operation here is checked, and an overflow
-//! is reported as [`Unbounded::Overflow`] rather than wrapped.
+//! is reported as [`AnalysisFailure::Overflow`] rather than wrapped.
 //!
 //! # The model
 //!
@@ -71,7 +71,7 @@
 //!
 //! match set.response_of(1) {
 //!     Response::Bounded(r) => assert_eq!(r, 320),
-//!     Response::Unbounded(why) => panic!("this set fits: {why}"),
+//!     Response::Refused(why) => panic!("this set fits: {why}"),
 //! }
 //! ```
 
@@ -206,17 +206,33 @@ impl Task {
     }
 }
 
-/// Why a response time has no usable bound.
+/// Why the analysis returned no usable bound.
 ///
-/// Separated from [`Response`] so that a caller can tell the four apart. Until
-/// 1.2.1 they were one variant, and the third was invisible: a finite bound
-/// can exist above a deadline, and nothing said whether the analysis had found
-/// one or given up.
+/// The distinction this enum exists to hold is between *the mathematics has no
+/// answer* and *this implementation declined to keep going*. Until 3.0.0 both
+/// arrived as `NonConvergent`, whose `Display` said "utilisation exceeds one;
+/// no fixed point exists" — a specific mathematical claim, printed in three
+/// situations where it had not been established. A reader tuning a system needs
+/// to know which of the two happened, because one of them is answered by
+/// changing the task set and the other by raising a cap.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Unbounded {
+pub enum AnalysisFailure {
     /// Utilisation through this priority level exceeds one, so the recurrence
     /// has no fixed point. No amount of iterating produces a number.
+    ///
+    /// This is the only variant that makes a claim about the mathematics.
     NonConvergent,
+    /// The recurrence did not settle within [`ITERATION_CAP`].
+    ///
+    /// Not a proof of non-convergence: the fixed point may exist just beyond
+    /// the cap. It says the implementation stopped, and where.
+    IterationLimit,
+    /// The busy period closed, its length is known and finite, and it holds
+    /// more jobs of this task than [`BUSY_PERIOD_CAP`].
+    ///
+    /// The analysis refused to enumerate them. Nothing here is unbounded — the
+    /// bound was not computed because enumerating it was declined.
+    BusyPeriodLimit,
     /// The recurrence converged, and it converged above the deadline. The
     /// value is the true response time: a real bound, on a task that misses.
     ///
@@ -231,10 +247,16 @@ pub enum Unbounded {
     NoSuchTask,
 }
 
-impl core::fmt::Display for Unbounded {
+impl core::fmt::Display for AnalysisFailure {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::NonConvergent => f.write_str("utilisation exceeds one; no fixed point exists"),
+            Self::IterationLimit => {
+                f.write_str("the recurrence did not settle within the iteration cap")
+            }
+            Self::BusyPeriodLimit => {
+                f.write_str("the busy period is bounded but holds more jobs than the cap admits")
+            }
             Self::ExceedsDeadline(r) => write!(f, "converges at {r} us, past the deadline"),
             Self::Overflow => f.write_str("the arithmetic overflowed and was refused"),
             Self::NoSuchTask => f.write_str("no task at that index"),
@@ -247,21 +269,21 @@ impl core::fmt::Display for Unbounded {
 pub enum Response {
     /// A proven upper bound, in microseconds, at or below the deadline.
     Bounded(u64),
-    /// No usable bound, and why. See [`Unbounded`].
-    Unbounded(Unbounded),
+    /// No usable bound, and why. See [`AnalysisFailure`].
+    Refused(AnalysisFailure),
 }
 
 impl Response {
     /// Whether this response meets a deadline.
     ///
-    /// Every [`Response::Unbounded`] fails every comparison, which is the
+    /// Every [`Response::Refused`] fails every comparison, which is the
     /// point: a caller that forgets to match on the variant still gets the
     /// safe answer.
     #[must_use]
     pub const fn meets(&self, deadline_us: u64) -> bool {
         match self {
             Self::Bounded(r) => *r <= deadline_us,
-            Self::Unbounded(_) => false,
+            Self::Refused(_) => false,
         }
     }
 
@@ -270,21 +292,21 @@ impl Response {
     pub const fn bound(&self) -> Option<u64> {
         match self {
             Self::Bounded(r) => Some(*r),
-            Self::Unbounded(_) => None,
+            Self::Refused(_) => None,
         }
     }
 
     /// The response time whether or not it meets the deadline.
     ///
-    /// [`Unbounded::ExceedsDeadline`] carries a real number, and a caller
+    /// [`AnalysisFailure::ExceedsDeadline`] carries a real number, and a caller
     /// asking "how badly" wants it. Non-convergence and overflow still have
     /// nothing to give.
     #[must_use]
     pub const fn response_time(&self) -> Option<u64> {
         match self {
             Self::Bounded(r) => Some(*r),
-            Self::Unbounded(Unbounded::ExceedsDeadline(r)) => Some(*r),
-            Self::Unbounded(_) => None,
+            Self::Refused(AnalysisFailure::ExceedsDeadline(r)) => Some(*r),
+            Self::Refused(_) => None,
         }
     }
 
@@ -296,9 +318,9 @@ impl Response {
 
     /// Why there is no bound, if there is none.
     #[must_use]
-    pub const fn reason(&self) -> Option<Unbounded> {
+    pub const fn reason(&self) -> Option<AnalysisFailure> {
         match self {
-            Self::Unbounded(u) => Some(*u),
+            Self::Refused(u) => Some(*u),
             Self::Bounded(_) => None,
         }
     }
@@ -310,7 +332,7 @@ impl core::fmt::Display for Response {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Bounded(r) => write!(f, "{r} us"),
-            Self::Unbounded(why) => write!(f, "{why}"),
+            Self::Refused(why) => write!(f, "{why}"),
         }
     }
 }
@@ -427,8 +449,25 @@ impl TaskSet {
     /// iteration cap catches those, which is why the cap exists at all.
     #[must_use]
     pub fn utilisation_through(&self, index: usize) -> Option<u64> {
+        // `index + 1` unchecked was a panic in debug and, worse, a wrap in
+        // release: `utilisation_through(usize::MAX)` returned `Some(0)` for a
+        // set that was plainly busy — a wrong answer in the flattering
+        // direction, which is the one direction this crate exists to refuse.
+        //
+        // Clamped, not saturated. A saturating add would read the same here,
+        // and `audit.sh` would be right to object: saturation on a quantity
+        // yields a plausible wrong number instead of a refusal, and that gate
+        // cannot tell that this one is an array index rather than a time.
+        // Clamping to the array length says what is meant — a level deeper
+        // than the set is the whole set — without borrowing a habit that is
+        // wrong everywhere else in this file.
+        let depth = if index >= MAX_TASKS {
+            MAX_TASKS
+        } else {
+            index + 1
+        };
         let mut total: u64 = 0;
-        for t in self.tasks.iter().take(index + 1).flatten() {
+        for t in self.tasks.iter().take(depth).flatten() {
             total = total.checked_add(t.utilisation_ppm()?)?;
         }
         Some(total)
@@ -464,24 +503,24 @@ impl TaskSet {
     /// Convergence is decided before iterating, from the utilisation through
     /// this priority level. When the recurrence does converge, the search runs
     /// to the fixed point even if it passes the deadline, so that
-    /// [`Unbounded::ExceedsDeadline`] can report by how much. Earlier versions
+    /// [`AnalysisFailure::ExceedsDeadline`] can report by how much. Earlier versions
     /// stopped at the deadline and could not.
     ///
     /// Every add, multiply and subtract is checked. An overflow returns
-    /// [`Unbounded::Overflow`] rather than wrapping, because a wrapped sum
+    /// [`AnalysisFailure::Overflow`] rather than wrapping, because a wrapped sum
     /// turns an unschedulable set into a schedulable-looking one, and that is
     /// the one direction an arithmetic error must never go.
     #[must_use]
     pub fn response_of(&self, index: usize) -> Response {
         let task = match self.tasks.get(index) {
             Some(Some(t)) => *t,
-            _ => return Response::Unbounded(Unbounded::NoSuchTask),
+            _ => return Response::Refused(AnalysisFailure::NoSuchTask),
         };
 
         match self.utilisation_through(index) {
-            None => return Response::Unbounded(Unbounded::Overflow),
+            None => return Response::Refused(AnalysisFailure::Overflow),
             Some(u) if u > FULL_UTILISATION_PPM => {
-                return Response::Unbounded(Unbounded::NonConvergent)
+                return Response::Refused(AnalysisFailure::NonConvergent)
             }
             Some(_) => {}
         }
@@ -499,7 +538,7 @@ impl TaskSet {
         for t in self.tasks.iter().take(index + 1).flatten() {
             busy = match busy.checked_add(t.wcet_us) {
                 Some(x) => x,
-                None => return Response::Unbounded(Unbounded::Overflow),
+                None => return Response::Refused(AnalysisFailure::Overflow),
             };
         }
         let mut busy_settled = false;
@@ -508,16 +547,16 @@ impl TaskSet {
             for t in self.tasks.iter().take(index + 1).flatten() {
                 let window = match busy.checked_add(t.jitter_us) {
                     Some(x) => x,
-                    None => return Response::Unbounded(Unbounded::Overflow),
+                    None => return Response::Refused(AnalysisFailure::Overflow),
                 };
                 let jobs = window / t.period_us + u64::from(window % t.period_us != 0);
                 let demand = match jobs.checked_mul(t.wcet_us) {
                     Some(x) => x,
-                    None => return Response::Unbounded(Unbounded::Overflow),
+                    None => return Response::Refused(AnalysisFailure::Overflow),
                 };
                 next = match next.checked_add(demand) {
                     Some(x) => x,
-                    None => return Response::Unbounded(Unbounded::Overflow),
+                    None => return Response::Refused(AnalysisFailure::Overflow),
                 };
             }
             if next == busy {
@@ -527,14 +566,17 @@ impl TaskSet {
             busy = next;
         }
         if !busy_settled {
-            return Response::Unbounded(Unbounded::NonConvergent);
+            // The busy-period recurrence ran out of iterations. Whether a fixed
+            // point exists past the cap is not known here, and saying
+            // NonConvergent would be asserting that it does not.
+            return Response::Refused(AnalysisFailure::IterationLimit);
         }
 
         // How many jobs of this task the busy period contains. Derived, not
         // capped: the analysis knows the count before it starts enumerating.
         let released = match busy.checked_add(task.jitter_us) {
             Some(x) => x,
-            None => return Response::Unbounded(Unbounded::Overflow),
+            None => return Response::Refused(AnalysisFailure::Overflow),
         };
         let jobs_in_window = released / task.period_us + u64::from(released % task.period_us != 0);
         let jobs_in_window = jobs_in_window.max(1);
@@ -544,7 +586,10 @@ impl TaskSet {
         // is that every answer here stays checkable. Refused rather than
         // enumerated.
         if jobs_in_window > BUSY_PERIOD_CAP {
-            return Response::Unbounded(Unbounded::NonConvergent);
+            // The busy period closed. Its length is known, the job count is
+            // known, and both are finite. This is a refusal to enumerate, not
+            // an absence of a bound.
+            return Response::Refused(AnalysisFailure::BusyPeriodLimit);
         }
 
         // Job q of this task inside that busy period, counting from zero.
@@ -561,7 +606,7 @@ impl TaskSet {
                 .and_then(|x| x.checked_add(task.blocking_us))
             {
                 Some(b) => b,
-                None => return Response::Unbounded(Unbounded::Overflow),
+                None => return Response::Refused(AnalysisFailure::Overflow),
             };
             let mut w = base;
             let mut settled = false;
@@ -571,7 +616,7 @@ impl TaskSet {
                 for higher in self.tasks.iter().take(index).flatten() {
                     let window = match w.checked_add(higher.jitter_us) {
                         Some(x) => x,
-                        None => return Response::Unbounded(Unbounded::Overflow),
+                        None => return Response::Refused(AnalysisFailure::Overflow),
                     };
                     // ⌈window / T⌉ without floating point and without the overflow
                     // the usual (a + b - 1) / b trick invites.
@@ -579,11 +624,11 @@ impl TaskSet {
                         window / higher.period_us + u64::from(window % higher.period_us != 0);
                     let interference = match jobs.checked_mul(higher.wcet_us) {
                         Some(x) => x,
-                        None => return Response::Unbounded(Unbounded::Overflow),
+                        None => return Response::Refused(AnalysisFailure::Overflow),
                     };
                     next = match next.checked_add(interference) {
                         Some(x) => x,
-                        None => return Response::Unbounded(Unbounded::Overflow),
+                        None => return Response::Refused(AnalysisFailure::Overflow),
                     };
                 }
 
@@ -595,7 +640,9 @@ impl TaskSet {
             }
 
             if !settled {
-                return Response::Unbounded(Unbounded::NonConvergent);
+                // Same reasoning as the busy-period solve above: the cap was
+                // reached, which is a statement about this implementation.
+                return Response::Refused(AnalysisFailure::IterationLimit);
             }
 
             // R(q) = w(q) + J − q·T. The completion is measured from this
@@ -612,14 +659,14 @@ impl TaskSet {
             // cannot complete before it is released.
             let shift = match q.checked_mul(task.period_us) {
                 Some(x) => x,
-                None => return Response::Unbounded(Unbounded::Overflow),
+                None => return Response::Refused(AnalysisFailure::Overflow),
             };
             let r = match w
                 .checked_add(task.jitter_us)
                 .and_then(|x| x.checked_sub(shift))
             {
                 Some(x) => x,
-                None => return Response::Unbounded(Unbounded::Overflow),
+                None => return Response::Refused(AnalysisFailure::Overflow),
             };
             if r > worst {
                 worst = r;
@@ -627,7 +674,7 @@ impl TaskSet {
         }
 
         if worst > task.deadline_us {
-            Response::Unbounded(Unbounded::ExceedsDeadline(worst))
+            Response::Refused(AnalysisFailure::ExceedsDeadline(worst))
         } else {
             Response::Bounded(worst)
         }
@@ -906,7 +953,7 @@ mod tests {
         s.push(t(300, 400)).unwrap();
         assert_eq!(
             s.response_of(1),
-            Response::Unbounded(Unbounded::NonConvergent)
+            Response::Refused(AnalysisFailure::NonConvergent)
         );
     }
 
@@ -917,7 +964,7 @@ mod tests {
         s.push(Task::new(200, 1000).deadline(250)).unwrap();
         // Converges at 300, which is past 250. The number is the point.
         match s.response_of(1) {
-            Response::Unbounded(Unbounded::ExceedsDeadline(r)) => assert_eq!(r, 300),
+            Response::Refused(AnalysisFailure::ExceedsDeadline(r)) => assert_eq!(r, 300),
             other => panic!("expected ExceedsDeadline, got {other:?}"),
         }
     }
@@ -925,13 +972,13 @@ mod tests {
     #[test]
     fn every_unbounded_variant_fails_every_deadline() {
         for why in [
-            Unbounded::NonConvergent,
-            Unbounded::ExceedsDeadline(1),
-            Unbounded::Overflow,
-            Unbounded::NoSuchTask,
+            AnalysisFailure::NonConvergent,
+            AnalysisFailure::ExceedsDeadline(1),
+            AnalysisFailure::Overflow,
+            AnalysisFailure::NoSuchTask,
         ] {
-            assert!(!Response::Unbounded(why).meets(u64::MAX));
-            assert_eq!(Response::Unbounded(why).bound(), None);
+            assert!(!Response::Refused(why).meets(u64::MAX));
+            assert_eq!(Response::Refused(why).bound(), None);
         }
     }
 
@@ -939,7 +986,10 @@ mod tests {
     fn an_index_past_the_end_is_named_rather_than_guessed() {
         let mut s = TaskSet::new();
         s.push(t(100, 400)).unwrap();
-        assert_eq!(s.response_of(9), Response::Unbounded(Unbounded::NoSuchTask));
+        assert_eq!(
+            s.response_of(9),
+            Response::Refused(AnalysisFailure::NoSuchTask)
+        );
     }
 
     #[test]
@@ -949,7 +999,7 @@ mod tests {
             .unwrap();
         s.push(Task::new(u64::MAX / 2, u64::MAX).deadline(u64::MAX))
             .unwrap();
-        assert!(matches!(s.response_of(1), Response::Unbounded(_)));
+        assert!(matches!(s.response_of(1), Response::Refused(_)));
         assert_eq!(s.response_of(1).bound(), None);
     }
 
@@ -1076,10 +1126,10 @@ mod tests {
     fn rejections_and_responses_describe_themselves() {
         assert!(Rejected::Full.to_string().contains("full"));
         assert!(Response::Bounded(42).to_string().contains("42"));
-        assert!(Response::Unbounded(Unbounded::NonConvergent)
+        assert!(Response::Refused(AnalysisFailure::NonConvergent)
             .to_string()
             .contains("utilisation"));
-        assert!(Response::Unbounded(Unbounded::ExceedsDeadline(9))
+        assert!(Response::Refused(AnalysisFailure::ExceedsDeadline(9))
             .to_string()
             .contains('9'));
     }

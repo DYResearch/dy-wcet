@@ -9,7 +9,7 @@
 //! wrong such a test protects the bug. Every expectation here can be settled
 //! with a pencil.
 
-use dy_wcet::{Rejected, Response, Task, TaskSet, Unbounded, MAX_TASKS};
+use dy_wcet::{AnalysisFailure, Rejected, Response, Task, TaskSet, MAX_TASKS};
 
 /// ```text
 /// C = 2, B = 0, higher: (1, 4) and (2, 6)
@@ -43,7 +43,7 @@ fn a_deadline_shorter_than_the_period_can_fail_at_low_utilisation() {
     s.push(Task::new(300, 2000).deadline(350)).unwrap();
     assert_eq!(
         s.response_of(1),
-        Response::Unbounded(Unbounded::ExceedsDeadline(400))
+        Response::Refused(AnalysisFailure::ExceedsDeadline(400))
     );
     assert_eq!(s.utilisation_ppm(), Some(400_000));
 }
@@ -77,7 +77,7 @@ fn blocking_alone_can_exceed_a_deadline() {
         .unwrap();
     assert_eq!(
         s.response_of(0),
-        Response::Unbounded(Unbounded::ExceedsDeadline(510))
+        Response::Refused(AnalysisFailure::ExceedsDeadline(510))
     );
 }
 
@@ -116,7 +116,7 @@ fn the_deadline_boundary_from_both_sides() {
     misses.push(Task::new(200, 1000).deadline(299)).unwrap();
     assert_eq!(
         misses.response_of(1),
-        Response::Unbounded(Unbounded::ExceedsDeadline(300))
+        Response::Refused(AnalysisFailure::ExceedsDeadline(300))
     );
 }
 
@@ -188,7 +188,7 @@ fn an_over_utilised_set_is_refused_by_arithmetic_not_by_exhaustion() {
     assert_eq!(s.utilisation_ppm(), Some(1_500_000));
     assert_eq!(
         s.response_of(1),
-        Response::Unbounded(Unbounded::NonConvergent)
+        Response::Refused(AnalysisFailure::NonConvergent)
     );
 }
 
@@ -238,13 +238,13 @@ fn the_task_limit_is_enforced_rather_than_overrun() {
 fn rejections_and_responses_describe_themselves() {
     assert!(Rejected::ZeroPeriod.to_string().contains("period"));
     assert!(Response::Bounded(42).to_string().contains("42"));
-    assert!(Response::Unbounded(Unbounded::NonConvergent)
+    assert!(Response::Refused(AnalysisFailure::NonConvergent)
         .to_string()
         .contains("utilisation"));
-    assert!(Response::Unbounded(Unbounded::ExceedsDeadline(400))
+    assert!(Response::Refused(AnalysisFailure::ExceedsDeadline(400))
         .to_string()
         .contains("400"));
-    assert!(Response::Unbounded(Unbounded::NoSuchTask)
+    assert!(Response::Refused(AnalysisFailure::NoSuchTask)
         .to_string()
         .contains("no task"));
 }
