@@ -51,11 +51,11 @@ fn task(c: u64, t: u64, d: u64, b: u64, j: u64) -> Task {
 #[kani::proof]
 #[kani::unwind(18)]
 fn a_bounded_response_never_exceeds_its_deadline() {
-    let c: u64 = kani::any();
-    let t: u64 = kani::any();
-    let d: u64 = kani::any();
-    let b: u64 = kani::any();
-    let j: u64 = kani::any();
+    let c = u64::from(kani::any::<u8>());
+    let t = u64::from(kani::any::<u8>());
+    let d = u64::from(kani::any::<u8>());
+    let b = u64::from(kani::any::<u8>());
+    let j = u64::from(kani::any::<u8>());
     // Ranges tightened in 3.0.7. 3.0.6 fixed the unwinding assertions — the
     // loops close now, and the trace shows iteration 13 and 14 rather than 880
     // — and what remains is solver time: the step ended on exit 124, the
@@ -101,8 +101,8 @@ fn a_bounded_response_never_exceeds_its_deadline() {
 #[kani::proof]
 #[kani::unwind(8)]
 fn every_unbounded_variant_fails_every_deadline() {
-    let d: u64 = kani::any();
-    let v: u64 = kani::any();
+    let d = u64::from(kani::any::<u8>());
+    let v = u64::from(kani::any::<u8>());
 
     let all = [
         AnalysisFailure::NonConvergent,
@@ -135,10 +135,10 @@ fn every_unbounded_variant_fails_every_deadline() {
 #[kani::proof]
 #[kani::unwind(18)]
 fn the_recurrence_terminates_without_panicking() {
-    let c0: u64 = kani::any();
-    let t0: u64 = kani::any();
-    let c1: u64 = kani::any();
-    let t1: u64 = kani::any();
+    let c0 = u64::from(kani::any::<u8>());
+    let t0 = u64::from(kani::any::<u8>());
+    let c1 = u64::from(kani::any::<u8>());
+    let t1 = u64::from(kani::any::<u8>());
     kani::assume(t0 > 0 && t1 > 0 && t0 < 64 && t1 < 64);
     kani::assume(c0 <= t0 && c1 <= t1);
 
@@ -155,10 +155,10 @@ fn the_recurrence_terminates_without_panicking() {
 #[kani::proof]
 #[kani::unwind(18)]
 fn a_bounded_answer_is_never_below_its_own_work() {
-    let c: u64 = kani::any();
-    let t: u64 = kani::any();
-    let b: u64 = kani::any();
-    let j: u64 = kani::any();
+    let c = u64::from(kani::any::<u8>());
+    let t = u64::from(kani::any::<u8>());
+    let b = u64::from(kani::any::<u8>());
+    let j = u64::from(kani::any::<u8>());
     // Ranges tightened in 3.0.7. 3.0.6 fixed the unwinding assertions — the
     // loops close now, and the trace shows iteration 13 and 14 rather than 880
     // — and what remains is solver time: the step ended on exit 124, the
@@ -186,10 +186,10 @@ fn a_bounded_answer_is_never_below_its_own_work() {
 #[kani::proof]
 #[kani::unwind(18)]
 fn a_lone_task_pays_only_for_itself() {
-    let c: u64 = kani::any();
-    let t: u64 = kani::any();
-    let b: u64 = kani::any();
-    let j: u64 = kani::any();
+    let c = u64::from(kani::any::<u8>());
+    let t = u64::from(kani::any::<u8>());
+    let b = u64::from(kani::any::<u8>());
+    let j = u64::from(kani::any::<u8>());
     // Ranges tightened in 3.0.7. 3.0.6 fixed the unwinding assertions — the
     // loops close now, and the trace shows iteration 13 and 14 rather than 880
     // — and what remains is solver time: the step ended on exit 124, the
@@ -226,7 +226,7 @@ fn a_lone_task_pays_only_for_itself() {
 #[kani::proof]
 #[kani::unwind(18)]
 fn an_index_past_the_end_is_named() {
-    let i: usize = kani::any();
+    let i = usize::from(kani::any::<u8>());
     kani::assume(i > 0 && i <= dy_wcet::MAX_TASKS + 4);
     let s = TaskSet::new();
     assert!(s.response_of(i) == Response::Refused(AnalysisFailure::NoSuchTask));
