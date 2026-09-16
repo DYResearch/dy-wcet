@@ -237,7 +237,7 @@ jobs:
   proofs:
     name: Kani harnesses (advisory — not verifying yet)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     # Advisory, and the job name says so rather than a comment saying so.
     #
     # The harnesses do not currently complete. 3.0.6 fixed the unwinding
@@ -254,6 +254,19 @@ jobs:
     # being advisory and the README is not updated, `Claims and prose agree
     # with the repository` fails.
     continue-on-error: true
+    env:
+      # Pinned. Kani's newest release is 0.68.0 — its numbering is 0.x, there
+      # is no 3.7.1 in it.
+      KANI_VERSION: "0.68.0"
+      KANI_BUDGET: "360"
+      # Tried in order, first one that closes a harness wins. CaDiCaL is what
+      # CBMC bit-blasts to by default; the expensive harnesses are dominated by
+      # 64-bit integer division and checked multiplication, which an SMT solver
+      # reasons about in the bit-vector theory instead of blasting to SAT. That
+      # is a theory argument, not a measurement — nothing here has been timed,
+      # because Kani does not run in the environment this was written in. The
+      # ladder exists so that one CI run produces the measurement.
+      KANI_SOLVERS: "default kissat z3 minisat"
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch
@@ -269,15 +282,46 @@ jobs:
             ~/.cargo/bin/cargo-kani
             ~/.cargo/bin/kani-driver
             ~/.kani
-          key: kani-${{ runner.os }}-v1
+          # The version is in the key. It was not, and that made the cache the
+          # real pin: whatever `cargo install kani-verifier` resolved the first
+          # time stayed installed forever, and changing the install line would
+          # have had no effect until something else busted the cache. An
+          # unpinned install behind a version-blind cache is the bandit defect
+          # with an extra layer — the gate's behaviour fixed by accident, at a
+          # value nobody chose and nobody can read.
+          key: kani-${{ runner.os }}-${{ env.KANI_VERSION }}
 
       # Through 1.2.1 the README said "run them with cargo kani" and the
       # harnesses were not declared anywhere, so a clean clone ran nothing.
       # The badge counted proofs that no gate enforced. This is that gate.
       - if: steps.kani-cache.outputs.cache-hit != 'true'
         run: |
-          cargo install --locked kani-verifier
+          cargo install --locked kani-verifier@"$KANI_VERSION"
           cargo kani setup
+
+      # A cache restored from an older key, or a partially written one, leaves
+      # a binary that does not match the pin. Check rather than assume: the
+      # whole point of pinning is lost if the pinned value is never compared
+      # with what is on disk.
+      - name: The installed Kani is the pinned one
+        run: |
+          have="$(cargo kani --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          echo "   pinned $KANI_VERSION, installed ${have:-none}"
+          if [ "$have" != "$KANI_VERSION" ]; then
+            echo "::warning::reinstalling: the cache held ${have:-nothing}, not $KANI_VERSION"
+            cargo install --locked --force kani-verifier@"$KANI_VERSION"
+            cargo kani setup
+          fi
+
+      # CBMC ships CaDiCaL and MiniSat. The others have to come from somewhere,
+      # and a solver that is absent must not be reported as a solver that
+      # failed — that conflation is the one this repository keeps finding.
+      - name: Extra solvers, best effort
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq z3 minisat || true
+          for s in z3 minisat kissat cadical; do
+            if command -v "$s" >/dev/null 2>&1; then echo "   $s: $($s --version 2>&1 | head -1)"; else echo "   $s: not installed"; fi
+          done
 
       # One harness at a time, each with its own budget.
       #
@@ -297,7 +341,89 @@ jobs:
       # Six minutes is far above the seconds a bounded harness takes and far
       # below the point where the job dies. The names come from the source, not
       # from a second list here that would drift away from it.
-      - name: Run each harness under its own budget
+      - name: Run each harness, escalating the solver until one closes it
+        # 3.0.7 ran each harness once and reported "exceeded its budget". That
+        # is a fact about one solver, stated as a fact about the harness. The
+        # ladder turns this job into the measurement I could not run: for each
+        # harness, try the solvers in order and record which one closed it and
+        # in how long. One run answers what four releases of guessing did not.
+        #
+        # Three outcomes stay distinct, because collapsing them is how this
+        # repository loses a day: verified, timed out, and solver unavailable.
+        # The last is not a failure of anything except the runner's package
+        # list.
+        run: |
+          set -uo pipefail
+          harnesses=$(python3 - <<'PY'
+          import pathlib, re
+          src = pathlib.Path("kani/response_bounds.rs").read_text()
+          for m in re.finditer(r"#\[kani::proof\][\s\S]{0,400}?\nfn (\w+)", src):
+              print(m.group(1))
+          PY
+          )
+          count=$(echo "$harnesses" | grep -c .)
+          [ "$count" -ge 6 ] || { echo "::error::found only $count harnesses"; exit 1; }
+          echo "harnesses ($count): $(echo "$harnesses" | tr '\n' ' ')"
+          echo "solvers: $KANI_SOLVERS   budget per attempt: ${KANI_BUDGET}s"
+
+          { echo "## Kani harnesses — advisory, not a gate";
+            echo;
+            echo "Each harness is tried against the solvers in order until one closes it.";
+            echo "\`budget\` means it did not fail — it did not finish. \`unavailable\`";
+            echo "means the solver binary is not on the runner, which is not a result";
+            echo "about the harness at all. This job does not block the build and is not";
+            echo "evidence that anything was proved.";
+            echo;
+            echo "| harness | solver | outcome | time |";
+            echo "|---|---|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
+
+          unresolved=""
+          for h in $harnesses; do
+            closed=""
+            for solver in $KANI_SOLVERS; do
+              if [ "$solver" = "default" ]; then
+                args=""
+              else
+                command -v "$solver" >/dev/null 2>&1 || {
+                  echo "   $h / $solver: solver not on this runner, skipped"
+                  echo "| \`$h\` | $solver | unavailable | — |" >> "$GITHUB_STEP_SUMMARY"
+                  continue
+                }
+                args="--solver $solver"
+              fi
+              echo "::group::$h / $solver"
+              start=$(date +%s)
+              timeout "$KANI_BUDGET" cargo kani --harness "$h" $args
+              rc=$?
+              took=$(( $(date +%s) - start ))
+              echo "::endgroup::"
+              if [ $rc -eq 0 ]; then
+                echo "   $h / $solver: VERIFIED in ${took}s"
+                echo "| \`$h\` | $solver | **verified** | ${took}s |" >> "$GITHUB_STEP_SUMMARY"
+                closed="$solver"
+                break
+              elif [ $rc -eq 124 ]; then
+                echo "   $h / $solver: budget (${KANI_BUDGET}s) — did not fail, did not finish"
+                echo "| \`$h\` | $solver | budget exceeded | ${KANI_BUDGET}s |" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "::error::$h / $solver: failed with exit $rc after ${took}s"
+                echo "| \`$h\` | $solver | **failed** (exit $rc) | ${took}s |" >> "$GITHUB_STEP_SUMMARY"
+                closed="failed"
+                break
+              fi
+            done
+            [ -n "$closed" ] && [ "$closed" != "failed" ] || unresolved="$unresolved $h"
+          done
+
+          echo
+          if [ -n "$unresolved" ]; then
+            echo "::warning::not closed by any solver:$unresolved"
+            { echo; echo "Not closed by any solver:$unresolved"; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "every harness closed"
+          { echo; echo "**Every harness closed.** The job can return to required."; } >> "$GITHUB_STEP_SUMMARY"
+
         run: |
           set -uo pipefail
           harnesses=$(python3 - <<'PY'

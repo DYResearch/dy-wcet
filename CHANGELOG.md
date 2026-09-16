@@ -1,5 +1,45 @@
 # Changelog
 
+## [3.0.8] — 2026-09-15
+
+### Fixed
+
+- **kani-verifier was installed unpinned, behind a cache key that did not
+  carry the version.** `cargo install --locked kani-verifier` took whatever
+  crates.io resolved, and `key: kani-\${{ runner.os }}-v1` then froze it
+  forever: changing the install line would have had no effect until something
+  else busted the cache. The gate's version was fixed by accident, at a value
+  nobody chose and nobody could read from the file. Pinned at **0.68.0**, which
+  is Kani's newest — its numbering is 0.x, and there is no 3.7.1 in it. The
+  cache key carries the pin, and a step compares the installed binary against
+  it and reinstalls on a mismatch, because a pin never compared with reality
+  is decoration.
+
+### Added
+
+- **A solver ladder, which is the measurement rather than another guess.**
+  Each harness is tried against CaDiCaL, then kissat, then z3, then MiniSat,
+  stopping at the first that closes it; the run summary records which solver
+  and how long. The expensive harnesses are dominated by 64-bit integer
+  division and checked multiplication, which an SMT solver reasons about in
+  the bit-vector theory instead of bit-blasting to SAT. That is a theory
+  argument and not a timing, because Kani cannot run where this was written.
+  One CI run now produces what four releases of raising numbers did not.
+
+- Three outcomes stay distinct in the summary: verified, budget exceeded, and
+  **solver unavailable** — the last is a fact about the runner's package list
+  and not a result about the harness.
+
+- **A glossary in the README.** Every symbol the page uses — C, T, D, J, B, R,
+  w, L, U — and every acronym it leans on: WCET, RTA, FPPS, DM/RM, ppm, MSRV,
+  CBMC, SAT/SMT, BRS. `audit.sh` fails if the page uses one it does not
+  define.
+
+### Note on the version number
+
+The library API is unchanged, so this is a patch release. A minor bump would
+say features landed, and none did.
+
 ## [3.0.7] — 2026-09-15
 
 The proofs still do not verify, and the crate now says so everywhere it used

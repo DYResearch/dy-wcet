@@ -12,7 +12,7 @@
 [![proofs](https://img.shields.io/badge/Kani%20harnesses-6%20(advisory%2C%20not%20verifying)-d98b3a?style=flat-square&labelColor=0e141d)](kani/)
 [![Licence](https://img.shields.io/badge/Apache--2.0%20OR%20MIT-475569?style=flat-square&labelColor=0e141d)](#licence)
 
-[Two tasks, one number](#two-tasks-one-number) · [Use](#use) · [Verify](#verify-it-yourself) · [Limits](#what-it-does-not-do) · [Case study](#case-study) · [Timing audit](#timing-audit) · [Bounty](#the-bounty)
+[Symbols](#symbols-and-words) · [Two tasks, one number](#two-tasks-one-number) · [Use](#use) · [Verify](#verify-it-yourself) · [Limits](#what-it-does-not-do) · [Case study](#case-study) · [Timing audit](#timing-audit) · [Bounty](#the-bounty)
 
 </div>
 
@@ -30,6 +30,38 @@ R    = w + J
 
 Joseph and Pandya published the form without `J` in 1986. It fits on a napkin,
 and the wrong answers are all quiet.
+
+---
+
+## Symbols and words
+
+Everything on this page and in the API uses these, and nothing here uses a
+symbol it has not defined. Every quantity is an integer number of
+**microseconds**; there is no floating point anywhere in this crate.
+
+| | Means | In the API |
+|:--|:--|:--|
+| **C** | Execution time — the worst case, which is an input you supply, not something this crate measures | `Task::new(c, t)` |
+| **T** | Period, or minimum inter-arrival time for a sporadic task | `Task::new(c, t)` |
+| **D** | Relative deadline. Defaults to `T`; may be shorter (constrained) or longer (arbitrary) | `.deadline(d)` |
+| **J** | Release jitter — how late a release may be relative to its nominal instant | `.jitter(j)` |
+| **B** | Blocking — lower-priority work this task cannot preempt, from a shared resource | `.blocking(b)` |
+| **R** | Response time: release to completion. The number this crate computes | `Response::Bounded(r)` |
+| **w** | The fixed point of the recurrence above, before jitter is added back | internal |
+| **L** | Level-*i* busy period: the stretch during which the processor runs only work at priority *i* or above | internal |
+| **U** | Utilisation, `C/T`, summed over a priority level | `utilisation_ppm()` |
+
+| Acronym | Expanded | Why it appears |
+|:--|:--|:--|
+| **WCET** | Worst-Case Execution Time | The `C` above. The crate's name; also the input it trusts you for |
+| **RTA** | Response-Time Analysis | The method: solve the recurrence, do not estimate |
+| **FPPS** | Fixed-Priority Preemptive Scheduling | The scheduling model this analysis is valid under |
+| **DM / RM** | Deadline-Monotonic / Rate-Monotonic | Priority orderings that are optimal under stated conditions |
+| **ppm** | Parts Per Million | How utilisation is reported, because `0.75` and `0.7500001` are different numbers and a float will not keep them apart |
+| **MSRV** | Minimum Supported Rust Version | Declared in `Cargo.toml`, checked in CI |
+| **CBMC** | C Bounded Model Checker | What Kani runs underneath; it unwinds loops to a bound and asks a solver |
+| **SAT / SMT** | Boolean satisfiability / Satisfiability Modulo Theories | The two kinds of solver CBMC can hand the problem to. Division over 64-bit integers is where the choice starts to matter |
+| **BRS** | Bounded Refusal Semantics | This crate's rule: when it cannot compute a sound bound it returns a named refusal, never a number it does not believe |
 
 ---
 

@@ -261,6 +261,29 @@ if [ -f kani/response_bounds.rs ]; then
     fail "the variant harness unwinds $VBOUND times but iterates $VARIANTS variants"
     note "too small a bound is an unwinding assertion failure, not a smaller proof"
   fi
+  # Kani is pinned, the cache key carries the pin, and the README glossary
+  # defines what the page uses.
+  KPIN=$(grep -oE 'KANI_VERSION: "[0-9]+\.[0-9]+\.[0-9]+"' .github/workflows/ci.yml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+  if [ -z "$KPIN" ]; then
+    fail "kani-verifier is not pinned to a version"
+  elif ! grep -q 'kani-verifier@"\$KANI_VERSION"' .github/workflows/ci.yml; then
+    fail "KANI_VERSION is declared but the install does not use it"
+  elif ! grep -q 'key: kani-\${{ runner.os }}-\${{ env.KANI_VERSION }}' .github/workflows/ci.yml; then
+    fail "the Kani cache key does not carry the version, so the cache is the real pin"
+  else
+    pass "kani-verifier pinned at $KPIN, install and cache key both use it"
+  fi
+
+  MISSING=""
+  for a in WCET RTA FPPS ppm MSRV CBMC BRS; do
+    grep -q "\*\*$a\*\*" README.md || MISSING="$MISSING $a"
+  done
+  if [ -z "$MISSING" ]; then
+    pass "the README defines every acronym it leans on"
+  else
+    fail "acronyms used but not defined in the README:$MISSING"
+  fi
+
   # The README must not claim verification while the job is advisory.
   #
   # The line it carried until 3.0.7 said CI runs the harnesses on every push,
