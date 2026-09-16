@@ -100,6 +100,16 @@ jobs:
   workflow:
     name: The workflow file is unambiguous
     runs-on: ubuntu-latest
+    # Cheap and first. Everything expensive depends on this file being what it
+    # looks like.
+    #
+    # And the limit of this job, stated because 496c232 found it: a validator
+    # that lives inside the workflow it validates cannot catch a defect that
+    # stops that workflow from loading. GitHub rejected the file before any job
+    # started, so this one did not run either. The duplicate `run:` key was
+    # invisible to every check in the repository and visible to `yaml.load`
+    # with a strict loader in one second. That check belongs before the push,
+    # not only inside the thing being pushed.
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
       - name: No duplicate keys, and every action pinned to a commit
@@ -423,55 +433,3 @@ jobs:
           fi
           echo "every harness closed"
           { echo; echo "**Every harness closed.** The job can return to required."; } >> "$GITHUB_STEP_SUMMARY"
-
-        run: |
-          set -uo pipefail
-          harnesses=$(python3 - <<'PY'
-          import pathlib, re
-          src = pathlib.Path("kani/response_bounds.rs").read_text()
-          for m in re.finditer(r"#\[kani::proof\][\s\S]{0,200}?\nfn (\w+)", src):
-              print(m.group(1))
-          PY
-          )
-          count=$(echo "$harnesses" | grep -c .)
-          echo "harnesses ($count): $(echo "$harnesses" | tr '\n' ' ')"
-          # The outcome per harness goes in the run summary, not only the log.
-          # 3.0.3 put it in the log and the log had to be grepped past the
-          # echoed command block to find it, which is one indirection too many
-          # for the fact the reader came for.
-          { echo "## Kani harnesses — advisory, not a gate";
-            echo;
-            echo "These do not currently verify. The unwinding assertions were fixed in";
-            echo "3.0.6 by reducing the caps under \`cfg(kani)\`; what remains is solver";
-            echo "time. A budget exceeded below means the harness did not fail — it did";
-            echo "not finish. This job does not block the build and is not evidence that";
-            echo "anything was proved.";
-            echo;
-            echo "| harness | outcome | time |"; echo "|---|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
-          [ "$count" -ge 6 ] || { echo "::error::found only $count harnesses; the extraction is wrong"; exit 1; }
-          failed=""
-          for h in $harnesses; do
-            echo "::group::$h"
-            start=$(date +%s)
-            timeout 720 cargo kani --harness "$h"
-            rc=$?
-            took=$(( $(date +%s) - start ))
-            if [ $rc -eq 0 ]; then
-              echo "  $h verified in ${took}s"
-              echo "| \`$h\` | verified | ${took}s |" >> "$GITHUB_STEP_SUMMARY"
-            elif [ $rc -eq 124 ]; then
-              echo "::error::$h exceeded its 12 minute budget — it did not fail, it did not finish"
-              echo "| \`$h\` | **budget exceeded** — did not fail, did not finish | 720s |" >> "$GITHUB_STEP_SUMMARY"
-              failed="$failed $h(timeout)"
-            else
-              echo "::error::$h failed with exit $rc after ${took}s"
-              echo "| \`$h\` | **failed** (exit $rc) | ${took}s |" >> "$GITHUB_STEP_SUMMARY"
-              failed="$failed $h(rc=$rc)"
-            fi
-            echo "::endgroup::"
-          done
-          if [ -n "$failed" ]; then
-            echo "::error::harnesses not verified:$failed"
-            exit 1
-          fi
-          echo "all $count harnesses verified"

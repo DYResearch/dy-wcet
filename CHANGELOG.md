@@ -1,5 +1,34 @@
 # Changelog
 
+## [3.0.9] — 2026-09-15
+
+### Fixed
+
+- **The workflow did not parse, and nothing in the repository could tell.**
+   carried two  keys in the same step — the
+  new solver-escalation block and the tail of the one it replaced, left behind
+  by a bad splice in 3.0.8. GitHub rejected the file before any job started.
+
+  So no result of any kind can be read from that run: no harness outcome, no
+  proof, no solver measurement, no timeout. The failure was at the parser, one
+  layer below everything the log appeared to be about.
+
+  The orphaned block is removed. There is one authoritative implementation of
+  the step, not two merged by hand.
+
+- **The duplicate-key job could not have caught it.** A validator inside the
+  workflow it validates does not run when that workflow fails to load. The
+  check is correct and was powerless; the limitation is now written next to it.
+   with a strict loader finds this in one second, before the push —
+  which is where it now runs.
+
+### Not changed
+
+Per the release specification: no Kani budget raised, no harness removed, no
+assertion weakened, and the previous run is **not** classified as a Kani
+failure. It was a configuration failure. Harness results will be classified
+from the first run that genuinely executes.
+
 ## [3.0.8] — 2026-09-15
 
 ### Fixed
