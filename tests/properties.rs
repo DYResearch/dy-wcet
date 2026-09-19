@@ -194,7 +194,7 @@ fn audsley_is_optimal_and_not_merely_lucky() {
     let mut found = 0usize;
     for _ in 0..TRIALS {
         let s = generate(&mut rng, 4);
-        if let Some(order) = s.optimal_priority_order() {
+        if let Some(order) = s.optimal_priority_order().found() {
             let mut arranged = TaskSet::new();
             for &idx in order.iter().take(s.len()) {
                 let _ = arranged.push(*s.get(idx).unwrap());
@@ -222,7 +222,7 @@ fn sensitivity_is_the_last_value_that_fits_and_not_one_more() {
             continue;
         }
         for i in 0..s.len() {
-            let Some(extra) = s.max_wcet_increase(i) else {
+            let Some(extra) = s.max_provable_wcet_increase(i) else {
                 continue;
             };
             let task = *s.get(i).unwrap();

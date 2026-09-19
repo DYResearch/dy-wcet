@@ -8,7 +8,7 @@
 [![no_std](https://img.shields.io/badge/no__std-yes-3ecf8e?style=flat-square&labelColor=0e141d)](src/lib.rs)
 [![unsafe](https://img.shields.io/badge/unsafe-forbidden-3ecf8e?style=flat-square&labelColor=0e141d)](src/lib.rs)
 [![deps](https://img.shields.io/badge/dependencies-0-3ecf8e?style=flat-square&labelColor=0e141d)](Cargo.toml)
-[![tests](https://img.shields.io/badge/tests-85-3ecf8e?style=flat-square&labelColor=0e141d)](#verify-it-yourself)
+[![tests](https://img.shields.io/badge/tests-92-3ecf8e?style=flat-square&labelColor=0e141d)](#verify-it-yourself)
 [![proofs](https://img.shields.io/badge/Kani%20harnesses-6%20(advisory%2C%20not%20verifying)-d98b3a?style=flat-square&labelColor=0e141d)](kani/)
 [![Licence](https://img.shields.io/badge/Apache--2.0%20OR%20MIT-475569?style=flat-square&labelColor=0e141d)](#licence)
 
@@ -126,7 +126,7 @@ overflow is reported as unschedulable.
 
 ```toml
 [dependencies]
-dy-wcet = "3.0"
+dy-wcet = "4.0"
 ```
 
 ```rust
@@ -165,20 +165,29 @@ hide a mistaken assumption about which task wins. If you would rather be told
 whether *any* ordering works, ask:
 
 ```rust
+use dy_wcet::PriorityAssignment;
+
 match set.optimal_priority_order() {
-    Some(order) => println!("this order meets every deadline: {order:?}"),
-    None        => println!("no fixed-priority ordering of this set does"),
+    PriorityAssignment::Found(order) => println!("this order meets every deadline: {order:?}"),
+    PriorityAssignment::NoOrdering   => println!("no fixed-priority ordering of this set does"),
+    PriorityAssignment::Inconclusive(why) => println!("the search could not decide: {why:?}"),
 }
 ```
 
-Audsley's assignment, and it is optimal in his exact sense: if an ordering
-exists, this finds one. It returns the ordering rather than applying it.
+Audsley's assignment. Optimal in his exact sense, with the qualification this
+crate has to make and a textbook does not: his proof assumes an exact
+schedulability test, and this analysis refuses some inputs rather than
+answering them. A refused candidate has not been shown to miss — only left
+unexamined. So the guarantee is *if an ordering exists and every candidate
+along the way could be analysed, this finds one*, and a level that runs out of
+candidates with a refusal among them returns `Inconclusive` rather than
+claiming none exists. It returns the ordering rather than applying it.
 
 Two more questions the analysis can answer once it holds:
 
 ```rust
 set.slack_of(1);            // Some(665) — time between the response and the deadline
-set.max_wcet_increase(1);   // Some(n)   — execution time this task could gain
+set.max_provable_wcet_increase(1);   // Some(n)   — execution time this task could gain
 ```
 
 The sensitivity search re-analyses the whole set, not the task being changed.

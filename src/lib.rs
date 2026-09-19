@@ -244,6 +244,46 @@ impl Task {
     }
 }
 
+/// The outcome of a priority search.
+///
+/// Through 3.0.9 this was an `Option`, and `None` carried two different
+/// statements: *no ordering of this set meets every deadline*, and *at least
+/// one candidate ordering could not be analysed, so nothing is known about
+/// it*. The first is a result. The second is a refusal, and a caller acting on
+/// it as though it were the first would be reordering a system on the strength
+/// of an answer that was never given.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PriorityAssignment {
+    /// Original indices in priority order, highest first. Every task in this
+    /// ordering was shown to meet its deadline at the level it holds.
+    Found([usize; MAX_TASKS]),
+    /// Every candidate at some level was analysed and every one of them missed
+    /// its deadline there. Audsley's result then says no ordering works.
+    NoOrdering,
+    /// A level had no placeable candidate, and at least one candidate was
+    /// declined by the analysis rather than shown to miss. An ordering may
+    /// exist; this search cannot say. Carries the first such refusal.
+    Inconclusive(AnalysisFailure),
+}
+
+impl PriorityAssignment {
+    /// The ordering, if one was established.
+    #[must_use]
+    pub fn found(self) -> Option<[usize; MAX_TASKS]> {
+        match self {
+            Self::Found(order) => Some(order),
+            _ => None,
+        }
+    }
+
+    /// Whether the search established that no ordering works. False for
+    /// `Inconclusive`, which is the distinction this type exists for.
+    #[must_use]
+    pub fn is_proven_impossible(self) -> bool {
+        matches!(self, Self::NoOrdering)
+    }
+}
+
 /// Why the analysis returned no usable bound.
 ///
 /// The distinction this enum exists to hold is between *the mathematics has no
@@ -283,6 +323,38 @@ pub enum AnalysisFailure {
     Overflow,
     /// The index addresses no admitted task.
     NoSuchTask,
+}
+
+impl AnalysisFailure {
+    /// Whether this refusal establishes something about the task set, or only
+    /// reports that the analysis stopped.
+    ///
+    /// The distinction decides what a caller may conclude. `ExceedsDeadline`
+    /// and `NonConvergent` are results: the first proves a miss, the second
+    /// proves that no fixed point exists, which is as final as a miss and for
+    /// a stronger reason. The rest are limits of this implementation —
+    /// iteration caps, job caps, arithmetic declined — and a set behind one of
+    /// them has not been shown to be anything.
+    ///
+    /// [`PriorityAssignment`] turns on exactly this: a level whose candidates
+    /// were all refused determinately has no ordering, and a level with an
+    /// indeterminate refusal among them has not been decided.
+    #[must_use]
+    pub fn is_determinate(self) -> bool {
+        match self {
+            // Proven: the response converges, past the deadline.
+            Self::ExceedsDeadline(_) => true,
+            // Proven: f(L) > L for every L, so no bound exists at all. A
+            // utilisation above one lands here, and no priority ordering
+            // rescues a set that asks for more processor than exists.
+            Self::NonConvergent => true,
+            // Stopped, capped, or declined. Says nothing about the set.
+            Self::IterationLimit | Self::BusyPeriodLimit => false,
+            Self::Overflow => false,
+            // A caller error rather than a property of any task set.
+            Self::NoSuchTask => false,
+        }
+    }
 }
 
 impl core::fmt::Display for AnalysisFailure {
@@ -504,6 +576,16 @@ impl TaskSet {
         } else {
             index + 1
         };
+        // A floor, and deliberately so. Each summand is already floored, so
+        // the total under-reports the true utilisation by under one part per
+        // million per task. That direction is the safe one *here*: this value
+        // gates convergence, and under-reporting means the gate declines to
+        // refuse early and lets the busy-period solve decide instead. Over-
+        // reporting would refuse a set that converges, which is the direction
+        // that loses answers.
+        //
+        // It is not the safe direction everywhere, and `passes_utilisation_bound`
+        // is where that mattered. See the note there.
         let mut total: u64 = 0;
         for t in self.tasks.iter().take(depth).flatten() {
             total = total.checked_add(t.utilisation_ppm()?)?;
@@ -561,6 +643,25 @@ impl TaskSet {
                 return Response::Refused(AnalysisFailure::NonConvergent)
             }
             Some(_) => {}
+        }
+
+        // A saturated level with any jitter or blocking in it has no fixed
+        // point, and that is provable rather than observed:
+        //
+        //     f(L) = B + Σ ⌈(L + Jⱼ)/Tⱼ⌉·Cⱼ  ≥  B + L·U + Σ Jⱼ·Cⱼ/Tⱼ
+        //
+        // so at U = 1, f(L) ≥ L + B + Σ Jⱼ·Cⱼ/Tⱼ, which exceeds L for every L
+        // as soon as one of those terms is non-zero. The recurrence below
+        // would climb for ten thousand iterations and then report
+        // `IterationLimit`, which says *this implementation stopped*. The
+        // truth is `NonConvergent`: the mathematics has no answer. Two
+        // different statements, and the enum exists to keep them apart.
+        //
+        // At U = 1 with no jitter and no blocking a fixed point does exist —
+        // L settles on a common multiple of the periods — so the condition is
+        // saturation *and* a disturbance, never saturation alone.
+        if self.level_is_saturated(index) && self.level_has_disturbance(index) {
+            return Response::Refused(AnalysisFailure::NonConvergent);
         }
 
         // Length of the level-i busy period: the stretch during which the
@@ -747,6 +848,18 @@ impl TaskSet {
         Some(task.deadline_us - r)
     }
 
+    /// **Provable, not maximal, and the name says which.** The search asks
+    /// `is_schedulable` at each step, and that answers false both for a set
+    /// that misses a deadline and for one the analysis declined to examine. A
+    /// candidate refused for [`AnalysisFailure::BusyPeriodLimit`] or
+    /// [`AnalysisFailure::IterationLimit`] stops the search as surely as a
+    /// missed deadline would, so the figure returned is the largest increase
+    /// this analysis could *establish*, which may be smaller than the largest
+    /// the system could actually absorb.
+    ///
+    /// Through 3.0.9 this was called `max_provable_wcet_increase`, which claimed the
+    /// second thing while computing the first.
+    ///
     /// How much execution time this task could gain before the set stops
     /// being schedulable.
     ///
@@ -758,7 +871,7 @@ impl TaskSet {
     /// `None` if the set does not currently hold together, or if the index
     /// addresses no task.
     #[must_use]
-    pub fn max_wcet_increase(&self, index: usize) -> Option<u64> {
+    pub fn max_provable_wcet_increase(&self, index: usize) -> Option<u64> {
         let task = *self.get(index)?;
         if !self.is_schedulable() {
             return None;
@@ -805,6 +918,78 @@ impl TaskSet {
         BOUND.get(n).copied().unwrap_or(693_147)
     }
 
+    /// Whether utilisation at this level reaches or exceeds one, decided
+    /// exactly.
+    ///
+    /// `utilisation_through` floors, which is the right direction for the
+    /// convergence gate and the wrong one for this question: a level whose
+    /// true utilisation is 1.0000004 floors to 1.0, and the difference decides
+    /// whether a fixed point can exist at all.
+    fn level_is_saturated(&self, index: usize) -> bool {
+        fn gcd(mut a: u128, mut b: u128) -> u128 {
+            while b != 0 {
+                let t = a % b;
+                a = b;
+                b = t;
+            }
+            a
+        }
+        let depth = if index >= MAX_TASKS {
+            MAX_TASKS
+        } else {
+            index + 1
+        };
+        let mut num: u128 = 0;
+        let mut den: u128 = 1;
+        for t in self.tasks.iter().take(depth).flatten() {
+            let c = u128::from(t.wcet_us);
+            let tp = u128::from(t.period_us);
+            let g = gcd(den, tp);
+            let (d, n) = match (den.checked_mul(tp / g), num.checked_mul(tp / g)) {
+                (Some(d), Some(n)) => (d, n),
+                // Undecidable here. Returning false hands the question to the
+                // recurrence, which refuses on its own terms.
+                _ => return false,
+            };
+            let add = match c.checked_mul(d / tp) {
+                Some(x) => x,
+                None => return false,
+            };
+            num = match n.checked_add(add) {
+                Some(x) => x,
+                None => return false,
+            };
+            den = d;
+            let g2 = gcd(num, den);
+            if g2 > 1 {
+                num /= g2;
+                den /= g2;
+            }
+        }
+        den != 0 && num >= den
+    }
+
+    /// Whether anything at this level pushes the busy period past its own
+    /// demand: a blocking term on the task under analysis, or jitter on any
+    /// task that actually executes.
+    fn level_has_disturbance(&self, index: usize) -> bool {
+        let depth = if index >= MAX_TASKS {
+            MAX_TASKS
+        } else {
+            index + 1
+        };
+        if let Some(Some(t)) = self.tasks.get(index) {
+            if t.blocking_us > 0 {
+                return true;
+            }
+        }
+        self.tasks
+            .iter()
+            .take(depth)
+            .flatten()
+            .any(|t| t.jitter_us > 0 && t.wcet_us > 0)
+    }
+
     /// Whether the set passes the Liu and Layland pre-check.
     ///
     /// True means schedulable without further analysis. False means nothing at
@@ -838,18 +1023,82 @@ impl TaskSet {
             }
             previous = Some(t.period_us);
         }
-        match self.utilisation_ppm() {
-            Some(u) => u <= Self::liu_layland_bound_ppm(self.len),
-            None => false,
+        // Compared exactly, as a ratio, because this function asserts a
+        // sufficient condition and `utilisation_ppm` is a floor.
+        //
+        // Through 3.0.9 this read `utilisation_ppm() <= bound`. The summands
+        // are floored per task, so a set could sit above the bound and report
+        // as sitting on it: C=2/T=7 with C=108/T=199 has a true utilisation of
+        // 828427.85 ppm against a two-task bound of 828427, and the floored
+        // sum reported 828427 exactly. This returned true — *schedulable
+        // without further analysis* — for a set that does not pass Liu and
+        // Layland. A sufficient condition answered from a number rounded in
+        // the flattering direction is the one failure this crate is built not
+        // to have.
+        //
+        // Σ(Cⱼ/Tⱼ) ≤ B/10⁶ is decided by accumulating the sum as a reduced
+        // fraction. The denominator is kept small by dividing out the common
+        // factor at every step; when it would still overflow, this returns
+        // false, which its own contract already defines as meaning nothing.
+        fn gcd(mut a: u128, mut b: u128) -> u128 {
+            while b != 0 {
+                let t = a % b;
+                a = b;
+                b = t;
+            }
+            a
+        }
+        let mut num: u128 = 0;
+        let mut den: u128 = 1;
+        for t in self.tasks.iter().take(self.len).flatten() {
+            let c = u128::from(t.wcet_us);
+            let tp = u128::from(t.period_us);
+            let g = gcd(den, tp);
+            let (lhs, rhs) = match (den.checked_mul(tp / g), num.checked_mul(tp / g)) {
+                (Some(d), Some(n)) => (d, n),
+                _ => return false,
+            };
+            let add = match c.checked_mul(lhs / tp) {
+                Some(x) => x,
+                None => return false,
+            };
+            num = match rhs.checked_add(add) {
+                Some(x) => x,
+                None => return false,
+            };
+            den = lhs;
+            let g2 = gcd(num, den);
+            if g2 > 1 {
+                num /= g2;
+                den /= g2;
+            }
+        }
+        if den == 0 {
+            return false;
+        }
+        let bound = u128::from(Self::liu_layland_bound_ppm(self.len));
+        match (
+            num.checked_mul(u128::from(FULL_UTILISATION_PPM)),
+            bound.checked_mul(den),
+        ) {
+            (Some(lhs), Some(rhs)) => lhs <= rhs,
+            _ => false,
         }
     }
 
     /// Audsley's optimal priority assignment.
     ///
-    /// Returns the original indices in priority order, highest first, or
-    /// `None` when no fixed-priority ordering of this set meets every
-    /// deadline. The result is optimal in the exact sense Audsley proved: if
-    /// any ordering works, this finds one.
+    /// Returns the original indices in priority order, highest first.
+    ///
+    /// Optimal in the sense Audsley proved, with one qualification this crate
+    /// has to make and a textbook does not. The proof assumes an exact
+    /// schedulability test. This analysis refuses some inputs rather than
+    /// answering them, and a candidate that is refused has not been shown to
+    /// miss its deadline — only left unexamined. So the guarantee here is:
+    /// **if any ordering works and every candidate along the way could be
+    /// analysed, this finds one.** When a level runs out of candidates with a
+    /// refusal among them, the result is [`PriorityAssignment::Inconclusive`]
+    /// rather than a claim that no ordering exists.
     ///
     /// The algorithm fills the lowest priority first. At each level it looks
     /// for a task that meets its deadline with every still-unassigned task
@@ -859,13 +1108,17 @@ impl TaskSet {
     /// Ordering is returned rather than applied. A set that silently reordered
     /// itself would hide the assumption the caller came in with.
     #[must_use]
-    pub fn optimal_priority_order(&self) -> Option<[usize; MAX_TASKS]> {
+    pub fn optimal_priority_order(&self) -> PriorityAssignment {
         let n = self.len;
         let mut assigned = [false; MAX_TASKS];
         let mut order = [0usize; MAX_TASKS];
 
         for level in (0..n).rev() {
             let mut placed = false;
+            // The first refusal seen while looking at this level. A level that
+            // ends with no placement and one of these in hand is inconclusive,
+            // not impossible.
+            let mut refused: Option<AnalysisFailure> = None;
             for candidate in 0..n {
                 if assigned[candidate] {
                     continue;
@@ -876,31 +1129,48 @@ impl TaskSet {
                     if other != candidate && !*other_done {
                         if let Some(Some(t)) = self.tasks.get(other) {
                             if trial.push(*t).is_err() {
-                                return None;
+                                return PriorityAssignment::Inconclusive(AnalysisFailure::Overflow);
                             }
                         }
                     }
                 }
                 if let Some(Some(t)) = self.tasks.get(candidate) {
                     if trial.push(*t).is_err() {
-                        return None;
+                        return PriorityAssignment::Inconclusive(AnalysisFailure::Overflow);
                     }
                 } else {
-                    return None;
+                    return PriorityAssignment::Inconclusive(AnalysisFailure::NoSuchTask);
                 }
                 let last = trial.len() - 1;
-                if trial.response_of(last).is_bounded() {
-                    assigned[candidate] = true;
-                    order[level] = candidate;
-                    placed = true;
-                    break;
+                match trial.response_of(last) {
+                    Response::Bounded(_) => {
+                        assigned[candidate] = true;
+                        order[level] = candidate;
+                        placed = true;
+                        break;
+                    }
+                    // A determinate refusal settles this candidate at this
+                    // level: it misses, or it has no bound at all. Either way
+                    // the search has learned something and moves on.
+                    Response::Refused(why) if why.is_determinate() => {}
+                    // An indeterminate one settles nothing. A level that runs
+                    // out of candidates with one of these among them has not
+                    // been shown impossible, only left undecided.
+                    Response::Refused(why) => {
+                        if refused.is_none() {
+                            refused = Some(why);
+                        }
+                    }
                 }
             }
             if !placed {
-                return None;
+                return match refused {
+                    Some(why) => PriorityAssignment::Inconclusive(why),
+                    None => PriorityAssignment::NoOrdering,
+                };
             }
         }
-        Some(order)
+        PriorityAssignment::Found(order)
     }
 }
 
@@ -1122,7 +1392,7 @@ mod tests {
         let mut s = TaskSet::new();
         s.push(t(100, 400)).unwrap();
         s.push(Task::new(200, 1000).deadline(400)).unwrap();
-        let extra = s.max_wcet_increase(1).unwrap();
+        let extra = s.max_provable_wcet_increase(1).unwrap();
         let mut grown = s.clone();
         grown.tasks[1] = Some(Task::new(200 + extra, 1000).deadline(400));
         assert!(grown.is_schedulable());
@@ -1147,17 +1417,20 @@ mod tests {
         s.push(Task::new(100, 400).deadline(150).named("tight"))
             .unwrap();
         assert!(!s.is_schedulable());
-        let order = s.optimal_priority_order().expect("an ordering exists");
+        let order = s
+            .optimal_priority_order()
+            .found()
+            .expect("an ordering exists");
         assert_eq!(order[0], 1, "the tight task belongs at the top");
         assert_eq!(order[1], 0);
     }
 
     #[test]
-    fn audsley_returns_none_when_no_ordering_works() {
+    fn audsley_proves_impossible_when_no_ordering_works() {
         let mut s = TaskSet::new();
         s.push(t(300, 400)).unwrap();
         s.push(t(300, 400)).unwrap();
-        assert_eq!(s.optimal_priority_order(), None);
+        assert_eq!(s.optimal_priority_order(), PriorityAssignment::NoOrdering);
     }
 
     #[test]

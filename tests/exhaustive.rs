@@ -8,7 +8,7 @@
 //! agree with, never confirm. `optimal_priority_order` claims optimality — if
 //! *any* fixed-priority ordering meets every deadline, it finds one — and a
 //! generated set that happens to be schedulable proves nothing about the claim.
-//! `max_wcet_increase` claims a maximum, and a test that checks the returned
+//! `max_provable_wcet_increase` claims a maximum, and a test that checks the returned
 //! value is feasible cannot tell a maximum from an underestimate.
 //!
 //! For task sets small enough, both claims can be checked against the full
@@ -125,7 +125,7 @@ fn audsley_agrees_with_every_ordering() {
         }
 
         checked += 1;
-        match (set.optimal_priority_order(), any_feasible) {
+        match (set.optimal_priority_order().found(), any_feasible) {
             (Some(order), Some(_)) => {
                 feasible_sets += 1;
                 // The ordering it returned must itself hold together.
@@ -159,7 +159,7 @@ fn audsley_agrees_with_every_ordering() {
     );
 }
 
-/// `max_wcet_increase` against a full linear scan.
+/// `max_provable_wcet_increase` against a full linear scan.
 ///
 /// The returned value must be feasible and the next one must not be. Checking
 /// only the first half would pass for any underestimate, which is the error a
@@ -178,7 +178,7 @@ fn max_wcet_increase_is_the_maximum_and_not_merely_feasible() {
         }
 
         for index in 0..n {
-            let Some(returned) = set.max_wcet_increase(index) else {
+            let Some(returned) = set.max_provable_wcet_increase(index) else {
                 continue;
             };
             let base = tasks[index];
@@ -208,7 +208,8 @@ fn max_wcet_increase_is_the_maximum_and_not_merely_feasible() {
 
             assert_eq!(
                 returned, truth,
-                "max_wcet_increase({index}) said {returned}, exhaustive scan says {truth}, \
+                "max_provable_wcet_increase({index}) said {returned}, \
+                 exhaustive scan says {truth}, \
                  for {tasks:?}"
             );
             assert!(feasible(returned), "the returned increment is not feasible");

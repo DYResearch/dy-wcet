@@ -1,5 +1,126 @@
 # Changelog
 
+## [4.0.0] — 2026-09-19
+
+An external audit raised ten findings against 3.0.9. Two were real, two were
+false, one recommended something the repository already did, and the loudest
+one was wrong in a way that led to a real defect anyway. All of it is below,
+including the parts that did not survive checking, because a changelog that
+records only the findings that held is a changelog that has been edited.
+
+### Fixed — the Liu and Layland pre-check could be granted by rounding
+
+`passes_utilisation_bound` summed per-task utilisations that were each already
+floored, then compared the total against the bound. Each summand lost under one
+part per million, which sounds like nothing and was not.
+
+`C=2/T=7` with `C=108/T=199` has a true utilisation of **828427.85 ppm** against
+a two-task bound of **828427**. It is above the bound. The floored sum reported
+exactly 828427, and the function returned true — *schedulable without further
+analysis* — for a set that does not pass. A second set, `C=8/T=13` with
+`C=49/T=230`, does the same.
+
+The comparison is now exact: the sum is accumulated as a fraction reduced by
+its common factor at every step, and `Σ(Cⱼ/Tⱼ) ≤ B/10⁶` is decided as
+`num·10⁶ ≤ B·den` with no rounding in it. Where the accumulation would
+overflow, the function returns false, which its own contract already defines as
+meaning nothing.
+
+`utilisation_ppm` keeps its floor and is now documented as one. That direction
+is the safe one where it is used — it gates convergence, and under-reporting
+lets the recurrence decide rather than refusing early. An attempt to make it
+exact by a common denominator was written and discarded: sixteen periods
+multiply past `u128` long before sixteen tasks are unusual, and it turned
+ordinary sets into overflow refusals.
+
+### Fixed — a refusal that named the wrong reason
+
+At utilisation exactly one with any jitter or blocking present, the recurrence
+climbed for ten thousand iterations and reported `IterationLimit`, which means
+*this implementation stopped counting*. The truth is that no fixed point
+exists, and it is provable rather than observed:
+
+    f(L) = B + Σ ⌈(L + Jⱼ)/Tⱼ⌉·Cⱼ  ≥  B + L·U + Σ Jⱼ·Cⱼ/Tⱼ
+
+so at U = 1 the right-hand side exceeds L for every L as soon as one of those
+terms is non-zero. `response_of` now checks that condition and refuses with
+`NonConvergent` immediately.
+
+The condition is saturation **and** a disturbance, never saturation alone: at
+U = 1 with no jitter and no blocking a fixed point does exist, L settles on a
+common multiple of the periods, and a gate that rejected every saturated set
+would throw that answer away.
+
+### Changed — `optimal_priority_order` no longer conflates two statements
+
+**Breaking.** It returned `Option<[usize; MAX_TASKS]>`, and `None` meant either
+*no ordering of this set meets every deadline* or *at least one candidate could
+not be analysed, so nothing is known*. The first is a result. The second is a
+refusal, and a caller acting on it as the first would reorder a system on the
+strength of an answer that was never given.
+
+It now returns [`PriorityAssignment`], with `Found`, `NoOrdering` and
+`Inconclusive(AnalysisFailure)`. `.found()` recovers the old `Option` where the
+distinction does not matter.
+
+Which of the two a refusal implies is decided by `AnalysisFailure::is_determinate`,
+new in this release and public because callers want it too. A refusal either
+establishes something about the set or reports that the analysis stopped, and
+the two are not close:
+
+| Refusal | Establishes | Why |
+|:--|:--|:--|
+| `ExceedsDeadline` | yes | the response converges, past the deadline |
+| `NonConvergent` | yes | f(L) > L for every L, so no bound exists at all |
+| `IterationLimit` | no | the loop was cut off |
+| `BusyPeriodLimit` | no | the job count was capped |
+| `Overflow` | no | the arithmetic declined |
+| `NoSuchTask` | no | a caller error, not a property of any set |
+
+The first draft of this release put `NonConvergent` in the second group, on the
+reasoning that a refusal is a refusal, and a two-task set demanding one and a
+half processors came back `Inconclusive`. No priority ordering rescues a set
+asking for more processor than exists; that is a proof, and calling it
+undecided was the same conflation this release exists to remove, made in the
+opposite direction.
+
+The documentation claimed *if any ordering works, this finds one*. Audsley
+proved that for an exact schedulability test, and this analysis refuses some
+inputs rather than answering them. The guarantee is now stated as it holds: if
+an ordering exists **and every candidate along the way could be analysed**.
+
+### Changed — `max_wcet_increase` is now `max_provable_wcet_increase`
+
+**Breaking.** The binary search asks `is_schedulable`, which answers false both
+for a set that misses a deadline and for one the analysis declined to examine.
+The figure returned is therefore the largest increase this analysis could
+*establish*, which may be smaller than the largest the system could absorb. The
+old name claimed the second while computing the first.
+
+### Findings that did not survive checking
+
+- **"Including the analysed task's own jitter in the busy period is a
+  mathematical error."** It is the standard Lehoczky and Tindell formulation.
+  The counterexample offered as proof, `C = T = 10` with `J = 1`, was described
+  as obviously feasible; releases compress to 0, 9, 19, 29 and from the second
+  job onward the response is 11 against a deadline of 10. The set misses, and
+  refusing it is correct. What the finding did expose was the wrong refusal
+  reason, fixed above.
+- **"The changelog stops at 1.2.1 while the package is 3.0.9."** The changelog's
+  most recent entry was 3.0.9.
+- **"Kani is advisory rather than a release gate, so do not claim formal
+  verification."** The job has been named `Kani harnesses (advisory — not
+  verifying yet)` with `continue-on-error` set, and CI carries a gate that fails
+  if the README and that job ever disagree. The phrase *formally verified*
+  appears nowhere in the crate.
+
+### Tests
+
+Five regression tests in `tests/adversarial.rs`, one per finding above,
+including the counterexample that turned out not to be one. The pairing is kept
+deliberately: two of these tests exist because the audit was right and one
+exists because it was wrong, and both kinds are worth a test.
+
 ## [3.0.9] — 2026-09-15
 
 ### Fixed

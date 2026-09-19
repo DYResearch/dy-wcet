@@ -15,7 +15,10 @@
 // Every expected value below is derived in the comment above it. A reader who
 // distrusts the implementation can settle each one with a pencil.
 
-use dy_wcet::{AnalysisFailure, Rejected, Response, Task, TaskSet, BUSY_PERIOD_CAP, MAX_TASKS};
+use dy_wcet::{
+    AnalysisFailure, PriorityAssignment, Rejected, Response, Task, TaskSet, BUSY_PERIOD_CAP,
+    MAX_TASKS,
+};
 
 /// `first_failure` names the highest-priority task that misses, not the count
 /// of tasks that do, and not the last one.
@@ -194,8 +197,8 @@ fn sensitivity_refuses_a_set_that_already_misses() {
     miss.push(Task::new(300, 2000).deadline(350)).unwrap();
 
     assert!(!miss.is_schedulable());
-    assert_eq!(miss.max_wcet_increase(0), None);
-    assert_eq!(miss.max_wcet_increase(1), None);
+    assert_eq!(miss.max_provable_wcet_increase(0), None);
+    assert_eq!(miss.max_provable_wcet_increase(1), None);
     assert_eq!(miss.slack_of(1), None);
 
     // The same call on a set that holds returns the last value that still fits.
@@ -204,7 +207,7 @@ fn sensitivity_refuses_a_set_that_already_misses() {
     let mut ok = TaskSet::new();
     ok.push(Task::new(100, 400)).unwrap();
     ok.push(Task::new(200, 1000)).unwrap();
-    assert_eq!(ok.max_wcet_increase(1), Some(500));
+    assert_eq!(ok.max_provable_wcet_increase(1), Some(500));
     assert_eq!(ok.slack_of(1), Some(700));
 }
 
@@ -343,7 +346,10 @@ fn audsley_returns_an_ordering_that_works_and_not_the_one_expected() {
 
     assert!(s.is_schedulable(), "the set already holds as pushed");
 
-    let order = s.optimal_priority_order().expect("an ordering exists");
+    let order = s
+        .optimal_priority_order()
+        .found()
+        .expect("an ordering exists");
     assert_eq!(order[..3], [2, 0, 1], "deterministic, and not the identity");
 
     let mut applied = TaskSet::new();
@@ -355,7 +361,7 @@ fn audsley_returns_an_ordering_that_works_and_not_the_one_expected() {
         "the ordering Audsley returned must actually hold"
     );
 
-    assert_eq!(s.optimal_priority_order(), Some(order));
+    assert_eq!(s.optimal_priority_order(), PriorityAssignment::Found(order));
 }
 
 /// An index past the end is named at every entry point, and none of them
@@ -370,7 +376,7 @@ fn an_absent_task_is_named_rather_than_defaulted_at_every_entry_point() {
         Response::Refused(AnalysisFailure::NoSuchTask)
     );
     assert_eq!(s.slack_of(9), None);
-    assert_eq!(s.max_wcet_increase(9), None);
+    assert_eq!(s.max_provable_wcet_increase(9), None);
     assert_eq!(s.get(9), None);
     assert_eq!(s.utilisation_through(9), s.utilisation_ppm());
 
