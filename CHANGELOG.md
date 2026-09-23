@@ -1,5 +1,41 @@
 # Changelog
 
+## [4.1.1] — 2026-09-23
+
+4.1.0 removed the first reason the Kani harnesses timed out. CI then showed
+the second, and this removes it.
+
+### Fixed
+- **`Flatten` was unrolled to the harness bound at nine call sites.** The task
+  array was `[Option<Task>; MAX_TASKS]`, walked everywhere with
+  `.iter().take(n).flatten()`. `Flatten::next` carries a loop of its own —
+  pull the next outer item until the inner one yields — and CBMC cannot see
+  that it stops early, so it unrolled that loop to `unwind(18)` on every call.
+  Most of the calls sit inside the recurrence and the busy-period iteration,
+  which are unrolled too. The CI log after 4.1.0 is exactly this:
+  `FlattenCompat<Take<slice::Iter<Option<Task>>>>::next` at iteration 17,
+  with the `Option::as_ref` and `as_mut` paths beside it, then exit 124.
+
+  The array is now `[Task; MAX_TASKS]` and every loop walks a slice. A slice
+  iterator is one pointer comparison a step, with no loop inside `next`. The
+  `Option` never carried information: `push` fills slots in order, so a slot
+  was `Some` exactly when its index was below `len`. Nothing past `len` is
+  read, and a private `upto` clamps every slice to `len` — the one place the
+  change could have gone wrong, since `.take(n)` past the end quietly yields
+  everything while `[..n]` past the end panics.
+
+  No public signature changed, and all 96 tests and 2 doc-tests pass,
+  including the property, differential, oracle and exhaustive suites that
+  would notice a changed answer.
+
+### Unchanged
+- Kani stays advisory. The `gcd` fix in 4.1.0 was verified with CBMC on a C
+  port before it shipped; this one cannot be verified the same way, because
+  the cost is in the code Rust generates for iterator adapters, which only
+  `kani-compiler` reproduces, and that needs the `nightly-2026-08-21`
+  toolchain. CI is where this is tested. If the job goes green, it becomes a
+  gate. If it times out again, the log will name the next loop.
+
 ## [4.1.0] — 2026-09-23
 
 Two defects in one function, found by running the verifier's own solver on it

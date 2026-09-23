@@ -482,10 +482,34 @@ impl core::fmt::Display for Rejected {
 /// sorting silently would hide a caller's mistaken assumption about which task
 /// wins. [`TaskSet::optimal_priority_order`] will search for an ordering that
 /// works, and it says so rather than applying one behind your back.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct TaskSet {
-    tasks: [Option<Task>; MAX_TASKS],
+    // Slots `0..len` hold admitted tasks and nothing past `len` is ever read.
+    // Until 4.1.1 this was `[Option<Task>; MAX_TASKS]`, walked with
+    // `.iter().take(n).flatten()`. `Flatten::next` carries a loop of its own,
+    // and a bounded model checker cannot see that it stops early, so it
+    // unrolled it to the harness bound at every one of nine call sites, most
+    // of them inside the recurrence. The Option also carried no information:
+    // `push` fills slots in order, so `Some` exactly when index < len.
+    tasks: [Task; MAX_TASKS],
     len: usize,
+}
+
+/// What fills a slot no task has been admitted to. Never read: every access
+/// goes through [`TaskSet::upto`], which stops at `len`.
+const VACANT: Task = Task {
+    wcet_us: 0,
+    period_us: 1,
+    deadline_us: 1,
+    blocking_us: 0,
+    jitter_us: 0,
+    name: "",
+};
+
+impl Default for TaskSet {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TaskSet {
@@ -493,7 +517,7 @@ impl TaskSet {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            tasks: [None; MAX_TASKS],
+            tasks: [VACANT; MAX_TASKS],
             len: 0,
         }
     }
@@ -513,12 +537,22 @@ impl TaskSet {
     /// The task at a priority position, if there is one.
     #[must_use]
     pub fn get(&self, index: usize) -> Option<&Task> {
-        self.tasks.get(index).and_then(|t| t.as_ref())
+        self.upto(self.len).get(index)
     }
 
     /// Every admitted task, highest priority first.
     pub fn iter(&self) -> impl Iterator<Item = &Task> {
-        self.tasks.iter().take(self.len).flatten()
+        self.upto(self.len).iter()
+    }
+
+    /// The first `depth` admitted tasks, clamped to how many there are.
+    ///
+    /// A plain slice: iterating it is one pointer comparison a step, with no
+    /// loop inside `next`. The clamp matters because `.take(n)` past the end
+    /// quietly yields everything while `[..n]` past the end panics.
+    fn upto(&self, depth: usize) -> &[Task] {
+        let n = if depth < self.len { depth } else { self.len };
+        &self.tasks[..n]
     }
 
     /// Admit a task at the next lowest priority.
@@ -535,7 +569,7 @@ impl TaskSet {
         if t.wcet_us > t.deadline_us {
             return Err(Rejected::ExecutionExceedsDeadline);
         }
-        self.tasks[self.len] = Some(t);
+        self.tasks[self.len] = t;
         self.len += 1;
         Ok(())
     }
@@ -587,7 +621,7 @@ impl TaskSet {
         // It is not the safe direction everywhere, and `passes_utilisation_bound`
         // is where that mattered. See the note there.
         let mut total: u64 = 0;
-        for t in self.tasks.iter().take(depth).flatten() {
+        for t in self.upto(depth) {
             total = total.checked_add(t.utilisation_ppm()?)?;
         }
         Some(total)
@@ -632,9 +666,9 @@ impl TaskSet {
     /// the one direction an arithmetic error must never go.
     #[must_use]
     pub fn response_of(&self, index: usize) -> Response {
-        let task = match self.tasks.get(index) {
-            Some(Some(t)) => *t,
-            _ => return Response::Refused(AnalysisFailure::NoSuchTask),
+        let task = match self.get(index) {
+            Some(t) => *t,
+            None => return Response::Refused(AnalysisFailure::NoSuchTask),
         };
 
         match self.utilisation_through(index) {
@@ -674,7 +708,7 @@ impl TaskSet {
         // bounded solve. A set that cannot close its busy period is refused
         // here, before any per-job work is attempted.
         let mut busy = task.blocking_us;
-        for t in self.tasks.iter().take(index + 1).flatten() {
+        for t in self.upto(index + 1) {
             busy = match busy.checked_add(t.wcet_us) {
                 Some(x) => x,
                 None => return Response::Refused(AnalysisFailure::Overflow),
@@ -683,7 +717,7 @@ impl TaskSet {
         let mut busy_settled = false;
         for _ in 0..ITERATION_CAP {
             let mut next = task.blocking_us;
-            for t in self.tasks.iter().take(index + 1).flatten() {
+            for t in self.upto(index + 1) {
                 let window = match busy.checked_add(t.jitter_us) {
                     Some(x) => x,
                     None => return Response::Refused(AnalysisFailure::Overflow),
@@ -752,7 +786,7 @@ impl TaskSet {
 
             for _ in 0..ITERATION_CAP {
                 let mut next = base;
-                for higher in self.tasks.iter().take(index).flatten() {
+                for higher in self.upto(index) {
                     let window = match w.checked_add(higher.jitter_us) {
                         Some(x) => x,
                         None => return Response::Refused(AnalysisFailure::Overflow),
@@ -880,7 +914,7 @@ impl TaskSet {
             let mut trial = self.clone();
             match task.wcet_us.checked_add(extra) {
                 Some(c) => {
-                    trial.tasks[index] = Some(Task { wcet_us: c, ..task });
+                    trial.tasks[index] = Task { wcet_us: c, ..task };
                     c <= task.deadline_us && trial.is_schedulable()
                 }
                 None => false,
@@ -955,7 +989,7 @@ impl TaskSet {
         };
         let mut num: u128 = 0;
         let mut den: u128 = 1;
-        for t in self.tasks.iter().take(depth).flatten() {
+        for t in self.upto(depth) {
             let c = u128::from(t.wcet_us);
             let tp = u128::from(t.period_us);
             let (Some(a), Some(b), Some(d)) =
@@ -984,15 +1018,13 @@ impl TaskSet {
         } else {
             index + 1
         };
-        if let Some(Some(t)) = self.tasks.get(index) {
+        if let Some(t) = self.get(index) {
             if t.blocking_us > 0 {
                 return true;
             }
         }
-        self.tasks
+        self.upto(depth)
             .iter()
-            .take(depth)
-            .flatten()
             .any(|t| t.jitter_us > 0 && t.wcet_us > 0)
     }
 
@@ -1015,7 +1047,7 @@ impl TaskSet {
     #[must_use]
     pub fn passes_utilisation_bound(&self) -> bool {
         let mut previous: Option<u64> = None;
-        for t in self.tasks.iter().take(self.len).flatten() {
+        for t in self.upto(self.len) {
             if t.deadline_us != t.period_us {
                 return false;
             }
@@ -1056,7 +1088,7 @@ impl TaskSet {
         }
         let mut num: u128 = 0;
         let mut den: u128 = 1;
-        for t in self.tasks.iter().take(self.len).flatten() {
+        for t in self.upto(self.len) {
             let c = u128::from(t.wcet_us);
             let tp = u128::from(t.period_us);
             let g = gcd(den, tp);
@@ -1133,14 +1165,14 @@ impl TaskSet {
                 let mut trial = TaskSet::new();
                 for (other, other_done) in assigned.iter().enumerate().take(n) {
                     if other != candidate && !*other_done {
-                        if let Some(Some(t)) = self.tasks.get(other) {
+                        if let Some(t) = self.get(other) {
                             if trial.push(*t).is_err() {
                                 return PriorityAssignment::Inconclusive(AnalysisFailure::Overflow);
                             }
                         }
                     }
                 }
-                if let Some(Some(t)) = self.tasks.get(candidate) {
+                if let Some(t) = self.get(candidate) {
                     if trial.push(*t).is_err() {
                         return PriorityAssignment::Inconclusive(AnalysisFailure::Overflow);
                     }
@@ -1400,10 +1432,10 @@ mod tests {
         s.push(Task::new(200, 1000).deadline(400)).unwrap();
         let extra = s.max_provable_wcet_increase(1).unwrap();
         let mut grown = s.clone();
-        grown.tasks[1] = Some(Task::new(200 + extra, 1000).deadline(400));
+        grown.tasks[1] = Task::new(200 + extra, 1000).deadline(400);
         assert!(grown.is_schedulable());
         let mut past = s.clone();
-        past.tasks[1] = Some(Task::new(200 + extra + 1, 1000).deadline(400));
+        past.tasks[1] = Task::new(200 + extra + 1, 1000).deadline(400);
         assert!(!past.is_schedulable());
     }
 
