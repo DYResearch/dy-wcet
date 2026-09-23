@@ -170,7 +170,7 @@ README_DEP=$(grep -m1 -oE 'dy-wcet *= *"[^"]+"' README.md 2>/dev/null | cut -d'"
 if [ -n "$README_DEP" ]; then
   case "$CVER" in
     "$README_DEP"*) pass "README install line \"$README_DEP\" is satisfied by $CVER" ;;
-    *)              fail "README install line \"$README_DEP\" does not cover $CVER" ;;
+    *)              fail "README install line \"$README_DEP\" is not the current minor of $CVER (Cargo would still resolve it; this keeps the page current)" ;;
   esac
 fi
 
@@ -274,15 +274,42 @@ if [ -f kani/response_bounds.rs ]; then
     pass "kani-verifier pinned at $KPIN, install and cache key both use it"
   fi
 
-  MISSING=""
-  for a in WCET RTA FPPS ppm MSRV CBMC BRS; do
-    grep -q "\*\*$a\*\*" README.md || MISSING="$MISSING $a"
-  done
+  # Derived from the page, not from a list. Until 4.1.0 this checked a fixed
+  # set, printed "defines every acronym it leans on", and was wrong both ways:
+  # DMA was used and undefined and passed, because it was not on the list;
+  # BRS was defined and never used, and the list forced it to stay.
+  ACR=$(python3 - <<'PYACR'
+import re, pathlib
+t = pathlib.Path("README.md").read_text(encoding="utf-8")
+body, fence = [], False
+for l in t.split("\n"):
+    if l.strip().startswith("```"):
+        fence = not fence; continue
+    if not fence:
+        body.append(re.sub(r"`[^`]*`|\]\([^)]*\)|https?://\S+", " ", l))
+text = "\n".join(body)
+defined = set(re.findall(r"\*\*([A-Z][A-Za-z0-9]*(?: / [A-Z][A-Za-z0-9]*)?)\*\*", t))
+defined = {p.strip() for d in defined for p in d.split("/")}
+# Conventional, or names rather than acronyms: licences, currencies, venues,
+# a report series, a chip, and the words a table header is made of.
+KNOWN = {"MIT","API","CI","OS","USD","EUR","IEEE","RTSS","YCS","README","TODO",
+         "OR","AND","RP2350","DY","UTC","ID","URL","PR","FAQ","JSON","CSV","HTML",
+         "SPDX","GPIO","CPU","RAM","ROM","MCU","SI","OK","ISO","IEC"}
+used = set(re.findall(r"\b[A-Z][A-Z0-9]{1,6}\b", text))
+missing = sorted(a for a in used if a not in defined and a not in KNOWN)
+unused = sorted(d for d in defined if d.isupper() and len(d) >= 2
+                and len(re.findall(r"\b" + re.escape(d) + r"\b", text)) <= 1)
+print("M:" + " ".join(missing)); print("U:" + " ".join(unused))
+PYACR
+)
+  MISSING=$(printf '%s\n' "$ACR" | sed -n 's/^M://p')
+  UNUSED=$(printf '%s\n' "$ACR"  | sed -n 's/^U://p')
   if [ -z "$MISSING" ]; then
-    pass "the README defines every acronym it leans on"
+    pass "every acronym the README uses is defined in it"
   else
-    fail "acronyms used but not defined in the README:$MISSING"
+    fail "acronyms used but not defined in the README: $MISSING"
   fi
+  [ -z "$UNUSED" ] || note "defined but not used in the prose: $UNUSED"
 
   # The README must not claim verification while the job is advisory.
   #

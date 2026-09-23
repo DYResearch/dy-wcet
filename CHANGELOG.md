@@ -1,5 +1,67 @@
 # Changelog
 
+## [4.1.0] — 2026-09-23
+
+Two defects in one function, found by running the verifier's own solver on it
+rather than by reading it: one that made every Kani harness time out, and one
+that made the crate report a limit where it could prove impossibility.
+
+### Fixed
+- **`level_is_saturated` timed out every Kani harness that reached it.** It
+  reduced the utilisation fraction with a Euclidean `gcd` on `u128`: two gcds
+  and four divisions per task. A 128-bit remainder is a 128-bit divider
+  circuit, and its size is set by the width, not the values — which is why
+  narrowing the symbolic inputs in 3.0.10 could not help. The CI job ran nine
+  minutes and was killed with exit 124.
+
+  Reproduced with the CBMC 6.11.0 that ships inside the Kani 0.68.0 bundle, on
+  a faithful C port. The shipped function, with two tasks and periods under
+  64, was still in propositional reduction after 165 seconds. The replacement
+  verified in 124 seconds, and proved both directions: when it says the level
+  is saturated the exact sum is at least one, and when it says it is not, the
+  exact sum is below one. The old harness asserted only the first.
+
+  The sum is now one unreduced fraction compared by cross-multiplication,
+  `num/den + c/T = (num·T + c·den) / (den·T)`. No gcd, no division.
+
+- **A level provably impossible was reported as a limit reached.** The old
+  function carried every task through after the sum had passed one, and the
+  denominator overflowed on the way. It returned `false`, the busy-period
+  computation then ran into its cap, and the answer was
+  `Refused(IterationLimit)` for a level whose non-convergence is a theorem.
+  It now returns as soon as the partial sum reaches one, since every later
+  term only adds.
+
+  This bites in a narrow band. `response_of` refuses any level whose floored
+  utilisation exceeds one million parts per million before it asks whether
+  the level is saturated, so `level_is_saturated` decides only
+  U in [1.0, 1.000001). The witness is in `tests/saturation.rs`: two tasks at
+  1/2, then fourteen primes above one million, each flooring to zero parts per
+  million. 4.0.0 returns `IterationLimit` on it; 4.1.0 returns
+  `NonConvergent`. The test fails on 4.0.0 and passes here.
+
+  No percentage is given for how often this happens. Random generation almost
+  never lands in that band, so any figure would describe the generator rather
+  than the crate. An earlier draft of this entry claimed 53.2% against
+  99.997%, measured on sets that never reach the function; the regression
+  test, run against 4.0.0, is what showed that number was wrong.
+
+- **The acronym check in `audit.sh` checked a list, not the page.** It printed
+  "the README defines every acronym it leans on" and was wrong both ways: DMA
+  was used and undefined, and passed, because DMA was not on the list; BRS was
+  defined and never used, and the list forced it to stay. The check now
+  derives the acronyms from the prose. DMA is defined. BRS is gone — it was
+  never used here, and in `axonos-brs` the same three letters mean BCI
+  Relevance Score.
+
+### Unchanged
+- Kani stays advisory. The structural cause of the timeout is removed and the
+  equivalent C verifies, but the Rust harnesses have not been run end to end:
+  `kani-compiler` links against `librustc_driver` from
+  `nightly-2026-08-21`, and that toolchain could not be installed where this
+  was prepared. CI is the first place the harnesses run on this code. The job
+  becomes a gate when it goes green, and not before.
+
 ## [4.0.0] — 2026-09-19
 
 An external audit raised ten findings against 3.0.9. Two were real, two were

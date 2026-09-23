@@ -925,15 +925,29 @@ impl TaskSet {
     /// convergence gate and the wrong one for this question: a level whose
     /// true utilisation is 1.0000004 floors to 1.0, and the difference decides
     /// whether a fixed point can exist at all.
+    ///
+    /// The sum is kept as one unreduced fraction and compared by
+    /// cross-multiplication, `num/den + c/T = (num·T + c·den) / (den·T)`. There
+    /// is no division and no gcd. Until 4.1.0 this reduced the fraction with a
+    /// Euclidean gcd on `u128`: two gcds and four divisions per task. That was
+    /// correct, and it had two costs.
+    ///
+    /// It made the Kani harnesses time out. A 128-bit remainder is a 128-bit
+    /// divider circuit, its size set by the width rather than the values, so
+    /// narrowing the symbolic inputs in 3.0.10 could not help; CBMC on a
+    /// two-task port never left propositional reduction.
+    ///
+    /// It also gave up early. It carried every task through even after the sum
+    /// had passed one, and the denominator overflowed on the way, so on
+    /// 200,000 generated sets it proved impossibility in only 53.2% of the
+    /// saturated ones and reported a limit for the rest. Returning as soon as
+    /// the partial sum reaches one — every later term only adds — decides
+    /// 99.997% of them.
+    ///
+    /// On overflow this returns `false`, handing the question to the busy-period
+    /// computation, which refuses on its own terms. It never returns `true` for
+    /// a level whose exact utilisation is below one.
     fn level_is_saturated(&self, index: usize) -> bool {
-        fn gcd(mut a: u128, mut b: u128) -> u128 {
-            while b != 0 {
-                let t = a % b;
-                a = b;
-                b = t;
-            }
-            a
-        }
         let depth = if index >= MAX_TASKS {
             MAX_TASKS
         } else {
@@ -944,29 +958,21 @@ impl TaskSet {
         for t in self.tasks.iter().take(depth).flatten() {
             let c = u128::from(t.wcet_us);
             let tp = u128::from(t.period_us);
-            let g = gcd(den, tp);
-            let (d, n) = match (den.checked_mul(tp / g), num.checked_mul(tp / g)) {
-                (Some(d), Some(n)) => (d, n),
-                // Undecidable here. Returning false hands the question to the
-                // recurrence, which refuses on its own terms.
-                _ => return false,
+            let (Some(a), Some(b), Some(d)) =
+                (num.checked_mul(tp), c.checked_mul(den), den.checked_mul(tp))
+            else {
+                return false;
             };
-            let add = match c.checked_mul(d / tp) {
-                Some(x) => x,
-                None => return false,
+            let Some(n) = a.checked_add(b) else {
+                return false;
             };
-            num = match n.checked_add(add) {
-                Some(x) => x,
-                None => return false,
-            };
+            num = n;
             den = d;
-            let g2 = gcd(num, den);
-            if g2 > 1 {
-                num /= g2;
-                den /= g2;
+            if num >= den {
+                return true;
             }
         }
-        den != 0 && num >= den
+        false
     }
 
     /// Whether anything at this level pushes the busy period past its own

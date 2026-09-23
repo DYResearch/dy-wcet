@@ -8,7 +8,7 @@
 [![no_std](https://img.shields.io/badge/no__std-yes-3ecf8e?style=flat-square&labelColor=0e141d)](src/lib.rs)
 [![unsafe](https://img.shields.io/badge/unsafe-forbidden-3ecf8e?style=flat-square&labelColor=0e141d)](src/lib.rs)
 [![deps](https://img.shields.io/badge/dependencies-0-3ecf8e?style=flat-square&labelColor=0e141d)](Cargo.toml)
-[![tests](https://img.shields.io/badge/tests-92-3ecf8e?style=flat-square&labelColor=0e141d)](#verify-it-yourself)
+[![tests](https://img.shields.io/badge/tests-96-3ecf8e?style=flat-square&labelColor=0e141d)](#verify-it-yourself)
 [![proofs](https://img.shields.io/badge/Kani%20harnesses-6%20(advisory%2C%20not%20verifying)-d98b3a?style=flat-square&labelColor=0e141d)](kani/)
 [![Licence](https://img.shields.io/badge/Apache--2.0%20OR%20MIT-475569?style=flat-square&labelColor=0e141d)](#licence)
 
@@ -60,8 +60,8 @@ symbol it has not defined. Every quantity is an integer number of
 | **ppm** | Parts Per Million | How utilisation is reported, because `0.75` and `0.7500001` are different numbers and a float will not keep them apart |
 | **MSRV** | Minimum Supported Rust Version | Declared in `Cargo.toml`, checked in CI |
 | **CBMC** | C Bounded Model Checker | What Kani runs underneath; it unwinds loops to a bound and asks a solver |
+| **DMA** | Direct Memory Access | Peripherals writing memory without the CPU. Not modelled here: contention it causes is yours to fold into blocking |
 | **SAT / SMT** | Boolean satisfiability / Satisfiability Modulo Theories | The two kinds of solver CBMC can hand the problem to. Division over 64-bit integers is where the choice starts to matter |
-| **BRS** | Bounded Refusal Semantics | This crate's rule: when it cannot compute a sound bound it returns a named refusal, never a number it does not believe |
 
 ---
 
@@ -126,7 +126,7 @@ overflow is reported as unschedulable.
 
 ```toml
 [dependencies]
-dy-wcet = "4.0"
+dy-wcet = "4.1"
 ```
 
 ```rust
