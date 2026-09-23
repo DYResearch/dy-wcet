@@ -1,5 +1,37 @@
 # Changelog
 
+## [4.1.3] — 2026-09-23
+
+The README, rewritten, and made to answer for itself.
+
+### Fixed
+- **The README's refusal example did not compile.** It matched four refusals
+  when `AnalysisFailure` has six — `IterationLimit` and `BusyPeriodLimit` were
+  missing — so a reader who copied it got `error[E0004]: non-exhaustive
+  patterns`. The sentence beside it said "which of four things happened." For a
+  crate whose point is that a refusal names the limit it reached, the example
+  hid exactly the two refusals that are limits.
+- **The README said "the 85 tests" when there were 96**, and its account of the
+  Kani harnesses predated all three fixes in 4.1.0 to 4.1.2. It also cited a
+  220 000-set campaign whose release predates the busy-period fix, so it could
+  not speak for the analysis as it now stands; that figure is gone rather than
+  re-attributed.
+
+### Added
+- **`tests/readme_examples.rs`**, four tests that hold the README to the code.
+  Every snippet is compiled, and every figure is asserted: the puzzle answers
+  300, the quick start 335, the slack 665, the sensitivity bound 465 with 466
+  shown to be one past it. The "What it prints" column of the refusal table is
+  checked word for word against `Display`, so the table cannot drift from the
+  messages. Nothing checked the README before, which is how it came to claim a
+  match that did not compile.
+
+### Changed
+- The README leads with the puzzle and a quick start, gives the six refusals a
+  section of their own with what each one prints, and states the formal
+  verification status as it is after 4.1.2. Every invariant `audit.sh`
+  enforces on it still holds.
+
 ## [4.1.2] — 2026-09-23
 
 The third and last layer of the Kani timeout, and the one that was never in
