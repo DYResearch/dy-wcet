@@ -32,6 +32,29 @@
 
 use dy_wcet::{AnalysisFailure, Response, Task, TaskSet};
 
+/// Every harness below unwinds to 8. Under `cfg(kani)` the deepest loop
+/// `response_of` can reach is `for _ in 0..ITERATION_CAP`, six iterations, so
+/// the unwinding assertion needs a bound of at least seven to prove it exits.
+/// Eight is the floor `tests/harness_scope.rs` measures and enforces, and it
+/// clears every cap with room: at most `MAX_TASKS` tasks and `BUSY_PERIOD_CAP`
+/// jobs, four each.
+///
+/// Until 4.1.2 the bound was 18. CBMC builds that many copies of a loop body
+/// whether or not the loop can run that far, so a walk over a slice that is
+/// empty in the harness was unrolled eighteen times, inside two more loops
+/// unrolled eighteen times. The CI log after 4.1.1 shows exactly that:
+/// `response_of.3`, the walk over higher-priority tasks, at iteration 18, then
+/// exit 124.
+///
+/// Lowering the bound cannot make a proof unsound. Kani checks unwinding
+/// assertions by default and CI does not switch them off, so a loop that needs
+/// more than this fails loudly as an unwinding failure instead of passing. The
+/// assertions below stop the build if a cap is ever raised to meet the bound.
+const UNWIND: u64 = 8;
+const _: () = assert!((dy_wcet::ITERATION_CAP as u64) < UNWIND);
+const _: () = assert!(dy_wcet::BUSY_PERIOD_CAP < UNWIND);
+const _: () = assert!((dy_wcet::MAX_TASKS as u64) < UNWIND);
+
 fn task(c: u64, t: u64, d: u64, b: u64, j: u64) -> Task {
     Task::new(c, t).deadline(d).blocking(b).jitter(j)
 }
@@ -49,7 +72,7 @@ fn task(c: u64, t: u64, d: u64, b: u64, j: u64) -> Task {
 /// which reaches `BUSY_PERIOD_CAP` at 1024 and cannot be unwound at all.
 /// `tests/harness_scope.rs` measures that the narrowing does what it says.
 #[kani::proof]
-#[kani::unwind(18)]
+#[kani::unwind(8)]
 fn a_bounded_response_never_exceeds_its_deadline() {
     let c = u64::from(kani::any::<u8>());
     let t = u64::from(kani::any::<u8>());
@@ -133,7 +156,7 @@ fn every_unbounded_variant_fails_every_deadline() {
 /// — and the input scope is narrowed here so that what it does cover is
 /// stated rather than implied.
 #[kani::proof]
-#[kani::unwind(18)]
+#[kani::unwind(8)]
 fn the_recurrence_terminates_without_panicking() {
     let c0 = u64::from(kani::any::<u8>());
     let t0 = u64::from(kani::any::<u8>());
@@ -153,7 +176,7 @@ fn the_recurrence_terminates_without_panicking() {
 /// busy-period form must not lose the `q = 0` case that the single-job
 /// recurrence computed.
 #[kani::proof]
-#[kani::unwind(18)]
+#[kani::unwind(8)]
 fn a_bounded_answer_is_never_below_its_own_work() {
     let c = u64::from(kani::any::<u8>());
     let t = u64::from(kani::any::<u8>());
@@ -184,7 +207,7 @@ fn a_bounded_answer_is_never_below_its_own_work() {
 /// execution plus blocking plus jitter. No interference term can appear from
 /// nowhere.
 #[kani::proof]
-#[kani::unwind(18)]
+#[kani::unwind(8)]
 fn a_lone_task_pays_only_for_itself() {
     let c = u64::from(kani::any::<u8>());
     let t = u64::from(kani::any::<u8>());
@@ -224,7 +247,7 @@ fn a_lone_task_pays_only_for_itself() {
 /// valid index, the first invalid one, and a few beyond. `usize::MAX` is
 /// covered concretely by `tests/adversarial.rs`, in under a second.
 #[kani::proof]
-#[kani::unwind(18)]
+#[kani::unwind(8)]
 fn an_index_past_the_end_is_named() {
     let i = usize::from(kani::any::<u8>());
     kani::assume(i > 0 && i <= dy_wcet::MAX_TASKS + 4);

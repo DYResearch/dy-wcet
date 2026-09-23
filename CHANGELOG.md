@@ -1,5 +1,45 @@
 # Changelog
 
+## [4.1.2] — 2026-09-23
+
+The third and last layer of the Kani timeout, and the one that was never in
+the analysis: the harnesses asked the solver to unroll every loop eighteen
+times when none of them can run more than six.
+
+### Fixed
+- **Every harness unwound to 18; the deepest loop runs 6.** Under
+  `cfg(kani)` the caps are `ITERATION_CAP = 6`, `BUSY_PERIOD_CAP = 4` and
+  `MAX_TASKS = 4`, and every loop in `response_of` is bounded by one of them.
+  CBMC builds as many copies of a loop body as the unwind bound says, whether
+  or not the loop can get that far. So the walk over higher-priority tasks —
+  empty in a one-task harness — was unrolled eighteen times, inside the
+  fixed-point iteration unrolled eighteen times, inside the job loop unrolled
+  eighteen times. The CI log after 4.1.1 is exactly that: `response_of.3` at
+  line 789, iteration 18, exit 124.
+
+  All six harnesses now unwind to 8. Seven would clear the deepest loop by
+  count alone, and the first draft of this release used it — which broke
+  `tests/harness_scope.rs`, the test that measures the narrowed spaces and
+  requires at least five bounds of eight or more. The draft was changed to
+  match the repository's own measured floor, not the other way round. Three
+  compile-time assertions in `kani/response_bounds.rs` stop the build if any
+  cap is raised to meet the bound, checked against rustc: they compile at the
+  shipped values and refuse when a cap reaches it.
+
+  This cannot make a proof unsound. Kani checks unwinding assertions by
+  default and CI does not switch them off, so a loop needing more than eight
+  iterations fails as an unwinding failure rather than passing. Eight cubed
+  is 512 unrolled copies where eighteen cubed was 5,832.
+
+### The three layers, together
+4.1.0 removed a `u128` gcd whose divider circuits no input range could
+shrink. 4.1.1 removed `Flatten`, whose own inner loop the solver could not
+see stop. This removes the unwind bound that made every remaining loop cost
+eighteen copies. The first two were verified before shipping — the gcd with
+CBMC on a C port, `Flatten` by its disappearance from the next CI log. This
+one is checked where it can be: the bound against every loop's cap, and the
+guard against rustc. Whether the harnesses now close is for CI to say.
+
 ## [4.1.1] — 2026-09-23
 
 4.1.0 removed the first reason the Kani harnesses timed out. CI then showed
