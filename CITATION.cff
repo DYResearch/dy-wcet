@@ -18,7 +18,7 @@ abstract: >-
   schedulable-looking one. Includes Audsley's optimal priority assignment.
 repository-code: "https://github.com/DYResearch/dy-wcet"
 url: "https://github.com/DYResearch/dy-wcet"
-version: "4.1.4"
+version: "4.1.5"
 date-released: "2026-09-24"
 license: "Apache-2.0 OR MIT"
 keywords:

@@ -342,6 +342,7 @@ What held them back is worth stating exactly, because "the proofs are red" and
 | 4.1.1 | `Flatten`, whose own inner loop the solver could not see stop early | The task array walked as a slice |
 | 4.1.2 | Every loop to eighteen, when none under `cfg(kani)` runs past six | An unwind bound of eight, guarded at compile time |
 | 4.1.4 | A division by a symbolic period at every step of the two-task recurrence | The higher-priority task fixed, three harnesses in place of one |
+| 4.1.5 | A slice rebuilt by range index on every pass: range check, panic path, pointer offset, same-allocation assertion | The analysis walks the array by index |
 
 The last row is the one worth reading. Every harness that runs a single task
 through `response_of` closes in seconds; the one that ran two fully symbolic

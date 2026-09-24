@@ -1,5 +1,37 @@
 # Changelog
 
+## [4.1.5] — 2026-09-24
+
+The fourth layer of the Kani timeout, and the first one the log named outright.
+
+### Fixed
+- **Every loop in the analysis rebuilt a slice on every pass.** 4.1.1 replaced
+  `Flatten` with a private `upto` that returns `&self.tasks[..n]`, and most of
+  its calls sat inside the fixed-point loops. Each call is a range index, and
+  under Kani a range index is a bounds check, a path to `slice_index_fail` and
+  its panic, a `usize` to `isize` conversion for the pointer offset, and a
+  same-allocation assertion on every step of the iterator — all unrolled with
+  the loop around it. The log after 4.1.4 shows all four at the interference
+  loop on line 789, one after another, until the budget runs out.
+
+  The analysis now walks the array by an index and a count. `self.tasks[i]` on
+  an array of fixed size is one comparison: no slice, no range, no pointer
+  offset, no same-allocation check. The count is taken once, before the loops
+  that use it. `get`, which is the first thing `response_of` calls, indexes the
+  same way. `upto` stays for `iter()` and the two walks outside the analysis.
+
+  Nothing about the answers changes. All 100 tests and 2 doc-tests pass,
+  including the oracle, the differential check, the exhaustive search, the
+  property tests, the saturation witness and the README examples — the ones
+  that would notice a different number.
+
+### Unchanged
+- Kani stays advisory. Each of the last four releases removed a cost the
+  previous log pointed at, and this is the first whose cost the log spelled out
+  line by line. The C ports in 4.1.4 already showed the arithmetic takes
+  seconds; what remained was what Rust puts around it, and this removes the
+  part of it the log names. Whether that was the last of it is for CI to say.
+
 ## [4.1.4] — 2026-09-24
 
 The one Kani harness that never finished, measured rather than guessed at, and

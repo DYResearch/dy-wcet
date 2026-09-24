@@ -537,7 +537,11 @@ impl TaskSet {
     /// The task at a priority position, if there is one.
     #[must_use]
     pub fn get(&self, index: usize) -> Option<&Task> {
-        self.upto(self.len).get(index)
+        if index < self.len {
+            Some(&self.tasks[index])
+        } else {
+            None
+        }
     }
 
     /// Every admitted task, highest priority first.
@@ -551,8 +555,25 @@ impl TaskSet {
     /// loop inside `next`. The clamp matters because `.take(n)` past the end
     /// quietly yields everything while `[..n]` past the end panics.
     fn upto(&self, depth: usize) -> &[Task] {
-        let n = if depth < self.len { depth } else { self.len };
-        &self.tasks[..n]
+        &self.tasks[..self.count_upto(depth)]
+    }
+
+    /// How many admitted tasks sit in the first `depth` slots: `depth` clamped
+    /// to `len`.
+    ///
+    /// Every loop in the analysis walks the array by this count and an index,
+    /// not by a slice. Until 4.1.5 they walked `upto`, which builds a slice
+    /// with a range index on every call, and most calls sat inside the
+    /// fixed-point loops. Under Kani each one carried the range check, its
+    /// panic path, a pointer offset and a same-allocation assertion, unrolled
+    /// with the loop around it; the CI log after 4.1.4 shows all four at the
+    /// interference loop. An index into a fixed-size array is one comparison.
+    fn count_upto(&self, depth: usize) -> usize {
+        if depth < self.len {
+            depth
+        } else {
+            self.len
+        }
     }
 
     /// Admit a task at the next lowest priority.
@@ -621,7 +642,11 @@ impl TaskSet {
         // It is not the safe direction everywhere, and `passes_utilisation_bound`
         // is where that mattered. See the note there.
         let mut total: u64 = 0;
-        for t in self.upto(depth) {
+        let n = self.count_upto(depth);
+        let mut k = 0;
+        while k < n {
+            let t = &self.tasks[k];
+            k += 1;
             total = total.checked_add(t.utilisation_ppm()?)?;
         }
         Some(total)
@@ -708,7 +733,11 @@ impl TaskSet {
         // bounded solve. A set that cannot close its busy period is refused
         // here, before any per-job work is attempted.
         let mut busy = task.blocking_us;
-        for t in self.upto(index + 1) {
+        let level = self.count_upto(index + 1);
+        let mut k = 0;
+        while k < level {
+            let t = &self.tasks[k];
+            k += 1;
             busy = match busy.checked_add(t.wcet_us) {
                 Some(x) => x,
                 None => return Response::Refused(AnalysisFailure::Overflow),
@@ -717,7 +746,10 @@ impl TaskSet {
         let mut busy_settled = false;
         for _ in 0..ITERATION_CAP {
             let mut next = task.blocking_us;
-            for t in self.upto(index + 1) {
+            let mut k = 0;
+            while k < level {
+                let t = &self.tasks[k];
+                k += 1;
                 let window = match busy.checked_add(t.jitter_us) {
                     Some(x) => x,
                     None => return Response::Refused(AnalysisFailure::Overflow),
@@ -786,7 +818,10 @@ impl TaskSet {
 
             for _ in 0..ITERATION_CAP {
                 let mut next = base;
-                for higher in self.upto(index) {
+                let mut k = 0;
+                while k < index {
+                    let higher = &self.tasks[k];
+                    k += 1;
                     let window = match w.checked_add(higher.jitter_us) {
                         Some(x) => x,
                         None => return Response::Refused(AnalysisFailure::Overflow),
@@ -989,7 +1024,11 @@ impl TaskSet {
         };
         let mut num: u128 = 0;
         let mut den: u128 = 1;
-        for t in self.upto(depth) {
+        let n = self.count_upto(depth);
+        let mut k = 0;
+        while k < n {
+            let t = &self.tasks[k];
+            k += 1;
             let c = u128::from(t.wcet_us);
             let tp = u128::from(t.period_us);
             let (Some(a), Some(b), Some(d)) =
@@ -1023,9 +1062,16 @@ impl TaskSet {
                 return true;
             }
         }
-        self.upto(depth)
-            .iter()
-            .any(|t| t.jitter_us > 0 && t.wcet_us > 0)
+        let n = self.count_upto(depth);
+        let mut k = 0;
+        while k < n {
+            let t = &self.tasks[k];
+            k += 1;
+            if t.jitter_us > 0 && t.wcet_us > 0 {
+                return true;
+            }
+        }
+        false
     }
 
     /// Whether the set passes the Liu and Layland pre-check.
