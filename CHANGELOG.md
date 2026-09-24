@@ -1,5 +1,53 @@
 # Changelog
 
+## [4.1.4] — 2026-09-24
+
+The one Kani harness that never finished, measured rather than guessed at, and
+replaced with three that are shaped like the ones that do.
+
+### Fixed
+- **`the_recurrence_terminates_without_panicking` ran out its budget on every
+  solver.** The public run page for 4.1.3 shows the job ending on exit 124
+  after six and a half minutes, and the log after 4.1.1 ends in the same place:
+  the interference loop, which is empty for one task and holds work only when
+  a second task is above it. This was the only harness with two.
+
+  The arithmetic was not the cost. A C port of that exact two-task path, run
+  through the CBMC shipped inside Kani 0.68.0 with bounds, pointer, overflow and
+  division checks switched on, verifies in about four seconds. Narrowing the
+  period range from 64 to 16 changed that by less than a second, because the
+  circuit is sized by width rather than range. Splitting the calls showed where
+  it sat: `response_of(0)` in 0.4 seconds, `response_of(1)` in 3.1 — the
+  interference term, a division by the higher-priority task's period taken at
+  every iteration of every job.
+
+  Fixing that task turns the division into a division by a constant, which the
+  solver folds before it searches; on the port it cut the time by about two and
+  a half. The harness is replaced by three, one each for a frequent, a middling
+  and a rare higher-priority task, with the lower task symbolic over the same
+  ranges as before. Each is then one symbolic task through the whole of
+  `response_of` — the shape every other harness already closes in CI.
+
+  This proves less than the harness it replaces, and says so in the file. That
+  one quantified over every pair and established nothing, because it never
+  ended.
+
+  What could not be found is recorded too. Rust adds something on top of the
+  arithmetic that multiplies the cost many times over, and neither pointer
+  iteration nor a per-step same-object check reproduced it in C. That is the
+  code `kani-compiler` generates for the standard library, and only it can show
+  where the time goes.
+
+### Added
+- **`audit.sh` holds the README's Kani badge to the source.** It counted the
+  harnesses and checked each had a bound, and never compared that count with
+  the badge. This release took the harnesses from six to eight, and the badge
+  and the prose both still said six until they were changed by hand. The check
+  fails when they differ, and was shown to fail with the badge set back to six.
+- **The README says who this is for** and what it is used for, concretely: the
+  engineers, the safety-case teams and the scheduler authors it serves, and the
+  call each of their questions maps to.
+
 ## [4.1.3] — 2026-09-23
 
 The README, rewritten, and made to answer for itself.

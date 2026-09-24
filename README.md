@@ -9,10 +9,10 @@
 [![unsafe](https://img.shields.io/badge/unsafe-forbidden-3ecf8e?style=flat-square&labelColor=0e141d)](src/lib.rs)
 [![deps](https://img.shields.io/badge/dependencies-0-3ecf8e?style=flat-square&labelColor=0e141d)](Cargo.toml)
 [![tests](https://img.shields.io/badge/tests-100-3ecf8e?style=flat-square&labelColor=0e141d)](#the-evidence)
-[![proofs](https://img.shields.io/badge/Kani%20harnesses-6%20(advisory%2C%20not%20verifying)-d98b3a?style=flat-square&labelColor=0e141d)](#formal-verification)
+[![proofs](https://img.shields.io/badge/Kani%20harnesses-8%20(advisory%2C%20not%20verifying)-d98b3a?style=flat-square&labelColor=0e141d)](#formal-verification)
 [![Licence](https://img.shields.io/badge/Apache--2.0%20OR%20MIT-475569?style=flat-square&labelColor=0e141d)](#licence)
 
-[The puzzle](#two-tasks-one-number) · [Quick start](#quick-start) · [Refusals](#six-ways-to-say-no) · [Evidence](#the-evidence) · [Limits](#what-it-does-not-do) · [Audit](#timing-audit)
+[The puzzle](#two-tasks-one-number) · [Quick start](#quick-start) · [Who it is for](#who-it-is-for) · [Refusals](#six-ways-to-say-no) · [Evidence](#the-evidence) · [Limits](#what-it-does-not-do) · [Audit](#timing-audit)
 
 </div>
 
@@ -109,6 +109,45 @@ utilisation before it iterates, and says so when no fixed point can exist.
 fast. A wrapping add turns an unschedulable set into a schedulable one — the
 single worst direction an arithmetic error can go. Every operation here is
 checked, and an overflow is a refusal.
+
+---
+
+## Who it is for
+
+**Firmware engineers shipping real-time Rust.** On Embassy, on bare metal, or on
+an RTOS through its own bindings, where a task set has to meet its deadlines
+before it reaches hardware rather than after a field failure. Feed it the
+execution times you measured and it tells you, per task, whether the set holds
+and by how much.
+
+**Teams that have to defend a timing claim.** A safety case under IEC 62304 for
+medical devices, ISO 26262 for vehicles or IEC 61508 for industrial control asks
+for worst-case response times with a derivation behind them. This is not a
+qualified tool and says so, but its arithmetic is integer, reproducible and
+short enough to check by hand — which is what an assessor needs from the number
+in front of them.
+
+**People building schedulers.** As an oracle to test an admission controller or
+a schedulability check against: the same inputs, an answer derived independently
+of the code under test, and a refusal wherever this one cannot justify a figure.
+
+**Robotics, motor control, drones and brain–computer interfaces.** Control loops
+where a missed deadline is a physical event rather than a slow page, and where
+"it usually finishes in time" is not an argument.
+
+**Anyone learning or teaching response-time analysis.** The paper tests are
+worked examples, each derived iteration by iteration in the comment above it,
+and they run.
+
+What people use it for, concretely:
+
+| To | Reach for |
+|:--|:--|
+| Check a task set at design time, before the hardware exists | `response_of` |
+| Keep a set schedulable as the code changes, as a test in CI | `is_schedulable` on your measured figures |
+| Find how much a task's execution time can grow before something misses | `max_provable_wcet_increase` |
+| Find a fixed-priority order that works, or learn that none does | `optimal_priority_order` |
+| Admit or refuse a task at run time, on the device | the same calls — the crate is `no_std` with no allocator |
 
 ---
 
@@ -214,6 +253,7 @@ Nothing on this page uses a symbol it has not defined.
 | **MSRV** | Minimum Supported Rust Version | Declared in `Cargo.toml` and checked in CI |
 | **CBMC** | C Bounded Model Checker | What Kani runs underneath: it unrolls loops to a bound and hands the result to a solver |
 | **SAT / SMT** | Boolean satisfiability / Satisfiability Modulo Theories | The two kinds of solver CBMC can use |
+| **RTOS** | Real-Time Operating System | What most task sets here run under; the analysis needs only its scheduling policy |
 | **DMA** | Direct Memory Access | Peripherals writing memory without the CPU. Not modelled; the contention it causes is yours to fold into blocking |
 
 ---
@@ -287,7 +327,7 @@ right and the check was wrong, which is the ordinary outcome and worth saying.
 
 ## Formal verification
 
-Six Kani harnesses in [`kani/`](kani/) are written to bound what the tests only
+Eight Kani harnesses in [`kani/`](kani/) are written to bound what the tests only
 sample. **They do not currently verify, and this crate claims no proved
 property.** CI runs them on every push as an advisory job that reports what
 happened and does not gate the build.
@@ -301,10 +341,23 @@ What held them back is worth stating exactly, because "the proofs are red" and
 | 4.1.0 | A `u128` gcd in the saturation test, whose divider circuits no input range could shrink | Cross-multiplication, no division |
 | 4.1.1 | `Flatten`, whose own inner loop the solver could not see stop early | The task array walked as a slice |
 | 4.1.2 | Every loop to eighteen, when none under `cfg(kani)` runs past six | An unwind bound of eight, guarded at compile time |
+| 4.1.4 | A division by a symbolic period at every step of the two-task recurrence | The higher-priority task fixed, three harnesses in place of one |
 
-Whether the harnesses now close is for CI to say, and until it does the badge,
-the job name and this section all say *advisory*. When the job is green it
-becomes a gate, and this paragraph changes to match.
+The last row is the one worth reading. Every harness that runs a single task
+through `response_of` closes in seconds; the one that ran two fully symbolic
+tasks never finished. A C port of that same path, run through the CBMC inside
+Kani 0.68.0 with Kani's checks on, verifies in about four seconds — so the
+arithmetic was never the cost. Nearly all of it is the interference term, a
+division by the higher-priority task's period taken at every iteration. Fixing
+that task makes it a division by a constant, which the solver folds before it
+searches, and each harness becomes one symbolic task through the whole
+recurrence: the shape CI already closes.
+
+That proves less than the harness it replaced, which quantified over every pair
+and established nothing because it never ended. Whether all eight now close is
+for CI to say, and until it does the badge, the job name and this section all say
+*advisory*. When the job is green it becomes a gate, and this paragraph changes to
+match.
 
 ---
 

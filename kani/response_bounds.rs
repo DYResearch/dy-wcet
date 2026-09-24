@@ -148,28 +148,62 @@ fn every_unbounded_variant_fails_every_deadline() {
     }
 }
 
-/// `response_of` terminates and never panics. Overflow is refused rather than
-/// wrapped, so no arithmetic in either loop can abort.
+/// The two-task recurrence, with the higher-priority task fixed and the lower
+/// one left symbolic over the same ranges as before.
 ///
-/// The bound covers the busy-period solve and the per-job solve together. It
-/// does not cover every admissible set — see the note at the head of this file
-/// — and the input scope is narrowed here so that what it does cover is
-/// stated rather than implied.
-#[kani::proof]
-#[kani::unwind(8)]
-fn the_recurrence_terminates_without_panicking() {
-    let c0 = u64::from(kani::any::<u8>());
-    let t0 = u64::from(kani::any::<u8>());
+/// Until 4.1.4 this was one harness with both tasks symbolic, and it never
+/// finished: every other harness closed in seconds and this one ran out its
+/// six-minute budget on each solver. The arithmetic was not the cost. A faithful
+/// C port of the same two-task path, run through the CBMC that ships inside
+/// Kani 0.68.0 with Kani's checks switched on, verifies in about four seconds.
+/// Almost all of that sits in `response_of(1)`, in the interference term — a
+/// division by the higher-priority task's period, taken once per iteration per
+/// job. With that period symbolic the solver carries a full divider through
+/// every step of the recurrence, and whatever Rust adds around it multiplies
+/// the cost past the budget.
+///
+/// Fixing the higher-priority task turns that division into a division by a
+/// constant, which the solver folds before it starts searching. Measured on the
+/// same port, it cuts the time by a factor of about two and a half. Each
+/// harness below is then shaped like the one-task harnesses, which CI already
+/// closes: one fully symbolic task through the whole of `response_of`.
+///
+/// This proves less than the harness it replaces. That one quantified over
+/// every pair and established nothing, because it never ended. These quantify
+/// over every lower-priority task under three higher-priority ones — frequent,
+/// middling and rare — and each either closes or says it did not.
+fn two_tasks_terminate(c0: u64, t0: u64) {
     let c1 = u64::from(kani::any::<u8>());
     let t1 = u64::from(kani::any::<u8>());
-    kani::assume(t0 > 0 && t1 > 0 && t0 < 64 && t1 < 64);
-    kani::assume(c0 <= t0 && c1 <= t1);
+    kani::assume(t1 > 0 && t1 < 64);
+    kani::assume(c1 <= t1);
 
     let mut s = TaskSet::new();
     if s.push(task(c0, t0, t0, 0, 0)).is_ok() && s.push(task(c1, t1, t1, 0, 0)).is_ok() {
         let _ = s.response_of(0);
         let _ = s.response_of(1);
     }
+}
+
+/// Preempted often: a higher-priority task every 4 µs.
+#[kani::proof]
+#[kani::unwind(8)]
+fn the_recurrence_terminates_under_a_frequent_higher_task() {
+    two_tasks_terminate(1, 4);
+}
+
+/// Preempted at a middling rate: 3 µs every 8 µs, utilisation 0.375.
+#[kani::proof]
+#[kani::unwind(8)]
+fn the_recurrence_terminates_under_a_middling_higher_task() {
+    two_tasks_terminate(3, 8);
+}
+
+/// Preempted rarely but heavily: 20 µs every 63 µs.
+#[kani::proof]
+#[kani::unwind(8)]
+fn the_recurrence_terminates_under_a_rare_higher_task() {
+    two_tasks_terminate(20, 63);
 }
 
 /// A bounded answer is never below the work the job itself contains. The

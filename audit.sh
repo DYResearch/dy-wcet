@@ -246,6 +246,15 @@ if [ -f kani/response_bounds.rs ]; then
     fail "$PROOFS Kani harness(es), $BOUNDS declared unwind bound(s)"
     note "an undeclared bound cannot be documented, and the spec asks for it to be"
   fi
+  # The README states the count in its badge, and nothing held that to the
+  # source: 4.1.4 took the harnesses from six to eight and the badge still
+  # said six until it was changed by hand.
+  RB=$(grep -oE 'Kani%20harnesses-[0-9]+' README.md | grep -oE '[0-9]+$' | head -1)
+  if [ "${RB:-none}" = "$PROOFS" ]; then
+    pass "README Kani badge says $PROOFS, source has $PROOFS"
+  else
+    fail "README Kani badge says ${RB:-nothing}, source has $PROOFS"
+  fi
   VARIANTS=$(awk '/^pub enum AnalysisFailure/,/^}/' src/lib.rs | grep -cE '^\s*[A-Z][A-Za-z]*[,(]')
   # The variant harness loops once per variant, so its unwind bound has to
   # exceed the count. 3.0.2 rewrote it to iterate six and left the bound at
