@@ -245,25 +245,19 @@ jobs:
   # 1.2.1 and reintroduced in its own workflow. The `workflow` job below now
   # fails on a duplicate key rather than trusting the reader to spot one.
   proofs:
-    name: Kani harnesses (advisory — not verifying yet)
+    name: Kani harnesses
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    # Advisory, and the job name says so rather than a comment saying so.
+    # A gate. Until 4.1.5 this job was advisory — continue-on-error, and a
+    # name that said so — because no run had ever closed every harness: each
+    # of 4.1.0 to 4.1.5 removed one cost the previous log showed CBMC spending
+    # its time on. 4.1.5 was the first run on which all eight closed, and this
+    # comment promised the job would return to required at the first green
+    # run. It has.
     #
-    # The harnesses do not currently complete. 3.0.6 fixed the unwinding
-    # assertions by reducing the caps under cfg(kani) — the trace went from
-    # iteration 880 to 13 — and what is left is solver time: the step ends on
-    # exit 124, which is the per-harness budget, not a failed check. A gate
-    # that cannot pass should not block a release whose other forty-eight
-    # checks are green, and it must not be reported as passing either. So it
-    # runs, it is visible, it says what happened in the run summary, and it
-    # does not gate.
-    #
-    # This comes back to required the moment one green run exists. README and
-    # audit.sh both carry the claim that it is advisory; if the job stops
-    # being advisory and the README is not updated, `Claims and prose agree
-    # with the repository` fails.
-    continue-on-error: true
+    # README and audit.sh carry the same claim. If this job is made advisory
+    # again, the README has to say so, or `Claims and prose agree with the
+    # repository` fails; audit.sh checks the two in both directions.
     env:
       # Pinned. Kani's newest release is 0.68.0 — its numbering is 0.x, there
       # is no 3.7.1 in it.
@@ -376,13 +370,13 @@ jobs:
           echo "harnesses ($count): $(echo "$harnesses" | tr '\n' ' ')"
           echo "solvers: $KANI_SOLVERS   budget per attempt: ${KANI_BUDGET}s"
 
-          { echo "## Kani harnesses — advisory, not a gate";
+          { echo "## Kani harnesses";
             echo;
             echo "Each harness is tried against the solvers in order until one closes it.";
             echo "\`budget\` means it did not fail — it did not finish. \`unavailable\`";
             echo "means the solver binary is not on the runner, which is not a result";
-            echo "about the harness at all. This job does not block the build and is not";
-            echo "evidence that anything was proved.";
+            echo "about the harness at all. Every harness has to close for this job to";
+            echo "pass, and this job has to pass for the build to.";
             echo;
             echo "| harness | solver | outcome | time |";
             echo "|---|---|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
@@ -432,4 +426,4 @@ jobs:
             exit 1
           fi
           echo "every harness closed"
-          { echo; echo "**Every harness closed.** The job can return to required."; } >> "$GITHUB_STEP_SUMMARY"
+          { echo; echo "**Every harness closed.**"; } >> "$GITHUB_STEP_SUMMARY"

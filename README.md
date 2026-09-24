@@ -9,10 +9,10 @@
 [![unsafe](https://img.shields.io/badge/unsafe-forbidden-3ecf8e?style=flat-square&labelColor=0e141d)](src/lib.rs)
 [![deps](https://img.shields.io/badge/dependencies-0-3ecf8e?style=flat-square&labelColor=0e141d)](Cargo.toml)
 [![tests](https://img.shields.io/badge/tests-100-3ecf8e?style=flat-square&labelColor=0e141d)](#the-evidence)
-[![proofs](https://img.shields.io/badge/Kani%20harnesses-8%20(advisory%2C%20not%20verifying)-d98b3a?style=flat-square&labelColor=0e141d)](#formal-verification)
+[![proofs](https://img.shields.io/badge/Kani%20harnesses-8%20verified-3ecf8e?style=flat-square&labelColor=0e141d)](#formal-verification)
 [![Licence](https://img.shields.io/badge/Apache--2.0%20OR%20MIT-475569?style=flat-square&labelColor=0e141d)](#licence)
 
-[The puzzle](#two-tasks-one-number) · [Quick start](#quick-start) · [Who it is for](#who-it-is-for) · [Refusals](#six-ways-to-say-no) · [Evidence](#the-evidence) · [Limits](#what-it-does-not-do) · [Audit](#timing-audit)
+[The puzzle](#two-tasks-one-number) · [Quick start](#quick-start) · [Who it is for](#who-it-is-for) · [Refusals](#six-ways-to-say-no) · [Evidence](#the-evidence) · [Limits](#what-it-does-not-do) · [Engagements](#engagements)
 
 </div>
 
@@ -327,38 +327,37 @@ right and the check was wrong, which is the ordinary outcome and worth saying.
 
 ## Formal verification
 
-Eight Kani harnesses in [`kani/`](kani/) are written to bound what the tests only
-sample. **They do not currently verify, and this crate claims no proved
-property.** CI runs them on every push as an advisory job that reports what
-happened and does not gate the build.
+Eight Kani harnesses in [`kani/`](kani/) verify on every push, and a push on
+which any of them fails does not pass CI.
 
-What held them back is worth stating exactly, because "the proofs are red" and
-"the proofs are slow" are different facts. Three layers of cost were removed in
-4.1.0 to 4.1.2, each one found in the log after the last was fixed:
+| Harness | What it proves |
+|:--|:--|
+| `a_bounded_response_never_exceeds_its_deadline` | A `Bounded` answer never exceeds the deadline. The invariant a caller acts on, and the one an arithmetic error would break in the flattering direction |
+| `every_unbounded_variant_fails_every_deadline` | Every refusal fails every deadline check, so a caller who forgets to match on the reason still gets the safe answer |
+| `the_recurrence_terminates_under_a_frequent_higher_task`<br>`…_middling_higher_task` · `…_rare_higher_task` | The two-task analysis terminates without panicking, for every lower-priority task under three shapes of higher-priority task |
+| `a_bounded_answer_is_never_below_its_own_work` | A bounded answer is never below the work the job itself contains |
+| `a_lone_task_pays_only_for_itself` | A task with nothing above it responds in exactly its own execution, blocking and jitter |
+| `an_index_past_the_end_is_named` | An index past the end is refused as `NoSuchTask`, and never reported as a bound |
+
+These are bounded proofs. Each holds for every input inside the ranges its
+harness states — periods under 64 µs, for instance — and not for every value a
+`u64` can hold. That is the strongest statement this crate makes about itself,
+and it is exactly that strong. The analysis at full width rests on the evidence
+above: the tests, the oracle, the exhaustive search and the simulation.
+
+Getting them to close took five releases, each removing what the previous CI log
+showed the solver spending its time on:
 
 | Release | What CBMC was unrolling | The fix |
 |:--|:--|:--|
-| 4.1.0 | A `u128` gcd in the saturation test, whose divider circuits no input range could shrink | Cross-multiplication, no division |
-| 4.1.1 | `Flatten`, whose own inner loop the solver could not see stop early | The task array walked as a slice |
+| 4.1.0 | A `u128` gcd, whose divider circuits no input range could shrink | Cross-multiplication, no division |
+| 4.1.1 | `Flatten`, whose own inner loop the solver could not see stop | The task array walked as a slice |
 | 4.1.2 | Every loop to eighteen, when none under `cfg(kani)` runs past six | An unwind bound of eight, guarded at compile time |
 | 4.1.4 | A division by a symbolic period at every step of the two-task recurrence | The higher-priority task fixed, three harnesses in place of one |
-| 4.1.5 | A slice rebuilt by range index on every pass: range check, panic path, pointer offset, same-allocation assertion | The analysis walks the array by index |
+| 4.1.5 | A slice rebuilt by range index on every pass, with its bounds check, panic path and pointer checks | The analysis walks the array by index |
 
-The last row is the one worth reading. Every harness that runs a single task
-through `response_of` closes in seconds; the one that ran two fully symbolic
-tasks never finished. A C port of that same path, run through the CBMC inside
-Kani 0.68.0 with Kani's checks on, verifies in about four seconds — so the
-arithmetic was never the cost. Nearly all of it is the interference term, a
-division by the higher-priority task's period taken at every iteration. Fixing
-that task makes it a division by a constant, which the solver folds before it
-searches, and each harness becomes one symbolic task through the whole
-recurrence: the shape CI already closes.
-
-That proves less than the harness it replaced, which quantified over every pair
-and established nothing because it never ended. Whether all eight now close is
-for CI to say, and until it does the badge, the job name and this section all say
-*advisory*. When the job is green it becomes a gate, and this paragraph changes to
-match.
+4.1.5 was the first release on which every harness closed. From 4.1.6 the job is
+a gate rather than a report.
 
 ---
 
@@ -389,23 +388,23 @@ failure chain is traced in the source, evidence is kept apart from hypothesis,
 and each next step names what would confirm or rule it out. It is the standard
 of delivery for the audit below, not a sample of one.
 
-## Timing audit
+## Engagements
 
-The arithmetic here is one piece of a practice. Some timing problems will not
-resolve: a failure that survives every fix, a suspected race, a liveness
-question, a bound that has to hold up in review. I take them one at a time, in
-writing.
+The arithmetic here is one piece of a practice. DY Research carries out
+fixed-price technical investigations, from a single timing question to full due
+diligence, each ending in a written verdict on what the evidence supports.
 
-| | Scope | Price |
+| | The question it answers | Price |
 |:--|:--|:--|
-| **Timing audit** | One reproducible problem, traced end to end. Written report in five working days | **$3,000** |
-| **Priority** | The same, for a failure that will not wait. Report within 48 hours | **$4,800** |
-| **System review** | Several sets, a scheduler design, or verification on a bench | **from $8,000** |
+| **Snapshot** | What does this technology actually do, and what does its evidence support? Five business days | **$5,000** |
+| **Focused Audit** | Does one critical property — timing, determinism, concurrency — actually hold? Two to three weeks | **$12,000** |
+| **Due Diligence** | Is the technology what the company says it is, and what could break the investment? Three to four weeks | **$25,000** |
 
-The price is fixed and agreed before anything starts. If the analysis will not
-tell you anything useful, I say so before you pay. What it does not include:
-hardware instrumentation, running your build, and any claim that your system is
-certified. Details in [`AUDIT.md`](AUDIT.md) · [connect@axonos.org](mailto:connect@axonos.org)
+Every engagement is carried out by the principal, start to finish, at a price
+fixed in writing before the work begins, and its revenue funds AxonOS, an
+open-source deterministic systems layer for neurotechnology. What each one includes, what you
+receive and where it stops are set out in [`AUDIT.md`](AUDIT.md).
+[dyresearch.github.io](https://dyresearch.github.io) · [connect@axonos.org](mailto:connect@axonos.org)
 
 ## The bounty
 
@@ -460,7 +459,7 @@ Apache-2.0 OR MIT, at your option: [`LICENSE-APACHE`](LICENSE-APACHE) ·
 
 <div align="center">
 
-**DY Research** — [dyresearch.github.io](https://dyresearch.github.io)
+**DY Research** — [dyresearch.github.io](https://dyresearch.github.io) · [Radar](https://axonos-bci.github.io/axonos-community-radar/) · [AxonOS](https://axonos.org)
 
 Denis Yermakou · [connect@axonos.org](mailto:connect@axonos.org) · [LinkedIn](https://www.linkedin.com/in/axonos)
 

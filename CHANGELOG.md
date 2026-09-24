@@ -1,5 +1,43 @@
 # Changelog
 
+## [4.1.6] — 2026-09-24
+
+The Kani harnesses verify, and the job that runs them is now a gate.
+
+### Changed
+- **Every harness closed on 4.1.5.** The run for that release shows the Kani
+  job completed successfully after ten minutes and forty-eight seconds, and the
+  step it runs exits zero only when every harness has closed. It is the first
+  run on which that happened, after five releases each removing one cost the
+  previous log pointed at. The job's own comment promised it would return to
+  required at the first green run; it has. `continue-on-error` is gone, the
+  job is named `Kani harnesses`, and its summary says a failure fails the build.
+
+  The README, the badge and `audit.sh` move with it. The README no longer says
+  the harnesses do not verify, which would now be false, and `audit.sh`
+  requires exactly that: it fails if the job is advisory and the README does
+  not say so, and fails if the job is a gate and the README says it is not.
+  The README now states what each of the eight harnesses proves, and that each
+  is a bounded proof over the ranges it declares rather than over every `u64`.
+
+- **The engagements.** `AUDIT.md` is rewritten as the scope of the practice
+  rather than of one kind of audit: three fixed-price engagements from a
+  five-day Snapshot at $5,000, through a Focused Audit at $12,000, to
+  Due Diligence at $25,000, each with the question it answers, who it is for,
+  what it includes, what you receive and where it stops. The README's audit
+  section becomes a summary of the three. The earlier $3,000, $4,800 and $8,000
+  tiers are withdrawn.
+
+### Added
+- **Where the money goes.** `AUDIT.md` states that revenue from every
+  engagement funds AxonOS and its path to independent foundation governance,
+  what the fee pays for on each side, and that funding AxonOS never shapes a
+  verdict: a company under review that competes with AxonOS or builds on it is
+  disclosed at scoping.
+- The README and `AUDIT.md` link the Radar, a living map of open neurotech, and
+  AxonOS, alongside the site, so the three public bodies of work behind the
+  practice can be reached from each other.
+
 ## [4.1.5] — 2026-09-24
 
 The fourth layer of the Kani timeout, and the first one the log named outright.
