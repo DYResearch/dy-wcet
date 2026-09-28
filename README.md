@@ -461,7 +461,7 @@ Apache-2.0 OR MIT, at your option: [`LICENSE-APACHE`](LICENSE-APACHE) ·
 
 **DY Research** — [dyresearch.github.io](https://dyresearch.github.io) · [Radar](https://axonos-bci.github.io/axonos-community-radar/) · [AxonOS](https://axonos.org)
 
-Denis Yermakou · [connect@axonos.org](mailto:connect@axonos.org) · [LinkedIn](https://www.linkedin.com/in/axonos)
+Denis Yermakou · [connect@axonos.org](mailto:connect@axonos.org) · [LinkedIn](https://www.linkedin.com/in/dyresearch/)
 
 © 2026 Denis Yermakou
 

@@ -151,7 +151,7 @@ know, and when. No call is required. Scope and price come back in writing.
 
 - **Email** — [connect@axonos.org](mailto:connect@axonos.org)
 - **Web** — [dyresearch.github.io](https://dyresearch.github.io)
-- **LinkedIn** — [linkedin.com/in/axonos](https://www.linkedin.com/in/axonos)
+- **LinkedIn** — [linkedin.com/in/dyresearch](https://www.linkedin.com/in/dyresearch/)
 
 The work behind the practice is public and can be checked before anything is
 bought: [the Radar](https://axonos-bci.github.io/axonos-community-radar/), a
