@@ -1,6 +1,6 @@
 <div align="center">
 
-# dy-wcet
+# DY-WCET
 
 ### Worst-case response time for real-time systems,<br>in arithmetic that refuses rather than rounds.
 
@@ -389,6 +389,8 @@ and each next step names what would confirm or rule it out. It is the standard
 of delivery for the audit below, not a sample of one.
 
 ## Engagements
+
+**What you receive.** Two samples show the standard of every engagement: [a Focused Audit report](https://dyresearch.github.io/sample/dy-research-focused-audit-sample.pdf), fourteen pages on a robotic arm's joint controller, and [the investment-committee memo](https://dyresearch.github.io/sample/dy-research-ic-memo-sample.pdf) that closes a Due Diligence. Every engagement runs under a mutual non-disclosure agreement, signed before the first file, and nothing is published without the client's written consent: that is why the company in the samples is fictional.
 
 The arithmetic here is one piece of a practice. DY Research carries out
 fixed-price technical investigations, from a single timing question to full due

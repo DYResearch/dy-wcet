@@ -101,6 +101,19 @@ questions. A mutual NDA is standard.
 
 ---
 
+## Confidentiality
+
+A mutual NDA is signed before the first file, on every engagement: Snapshot, Focused Audit and Due Diligence alike.
+
+- **Read-only, and only what the question needs.** Access ends at delivery.
+- **Nothing kept but the report.** Every copy of the client's material is deleted at the end, and the deletion is confirmed in writing.
+- **The report belongs to the client.** The client decides who reads it.
+- **Nothing is published without written consent.** Not the findings, not the client's name, not the fact of the engagement. Nothing learned in one engagement is used in another.
+
+The samples, [a Focused Audit report](https://dyresearch.github.io/sample/dy-research-focused-audit-sample.pdf) and [an investment-committee memo](https://dyresearch.github.io/sample/dy-research-ic-memo-sample.pdf), are built on a fictional company for that reason. The method and the arithmetic in them are real.
+
+---
+
 ## Where the money goes
 
 Revenue from every engagement funds [AxonOS](https://axonos.org) — an open-source,
