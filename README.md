@@ -11,6 +11,7 @@
 [![tests](https://img.shields.io/badge/tests-100-3ecf8e?style=flat-square&labelColor=0e141d)](#the-evidence)
 [![proofs](https://img.shields.io/badge/Kani%20harnesses-8%20verified-3ecf8e?style=flat-square&labelColor=0e141d)](#formal-verification)
 [![Licence](https://img.shields.io/badge/Apache--2.0%20OR%20MIT-475569?style=flat-square&labelColor=0e141d)](#licence)
+[![AxonOS Radar](https://img.shields.io/badge/AxonOS%20Radar-open%20neurotech%20map-1f8fae?style=flat-square&labelColor=0b1220)](https://axonos-bci.github.io/axonos-community-radar/)
 
 [The puzzle](#two-tasks-one-number) · [Quick start](#quick-start) · [Who it is for](#who-it-is-for) · [Refusals](#six-ways-to-say-no) · [Evidence](#the-evidence) · [Limits](#what-it-does-not-do) · [Engagements](#engagements)
 
