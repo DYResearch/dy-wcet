@@ -25,7 +25,7 @@ read the code.
 
 ---
 
-## Snapshot — $5,000
+## Snapshot
 
 **What does this technology actually do, and what does its evidence support?**
 
@@ -46,7 +46,7 @@ evidence matrix.
 
 ---
 
-## Focused Audit — $12,000
+## Focused Audit
 
 **Does this one critical property actually hold?**
 
@@ -76,7 +76,7 @@ published in full, and not an excerpt of one.
 
 ---
 
-## Due Diligence — $25,000
+## Due Diligence
 
 **Is the technology what the company says it is, and what could break the
 investment?**
@@ -133,7 +133,7 @@ AxonOS or builds on it, you are told at scoping, before you commit to anything.
 
 ## Terms
 
-- **Fixed price, confirmed in writing before any work begins.** Nothing is
+- **Pricing on request, fixed in writing before any work begins.** Nothing is
   invoiced until the scope is agreed.
 - **Invoiced in USD or EUR.** Half on starting, half on delivery.
 - **Conflicts of interest are disclosed at scoping**, before either side has

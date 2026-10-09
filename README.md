@@ -67,9 +67,11 @@ near it.
 
 ## Quick start
 
+`dy-wcet` is not published on crates.io; depend on a tagged release:
+
 ```toml
 [dependencies]
-dy-wcet = "4.1"
+dy-wcet = { git = "https://github.com/DYResearch/dy-wcet", tag = "v4.1.6" }
 ```
 
 ```rust
@@ -399,9 +401,9 @@ diligence, each ending in a written verdict on what the evidence supports.
 
 | | The question it answers | Price |
 |:--|:--|:--|
-| **Snapshot** | What does this technology actually do, and what does its evidence support? Five business days | **$5,000** |
-| **Focused Audit** | Does one critical property — timing, determinism, concurrency — actually hold? Two to three weeks | **$12,000** |
-| **Due Diligence** | Is the technology what the company says it is, and what could break the investment? Three to four weeks | **$25,000** |
+| **Snapshot** | What does this technology actually do, and what does its evidence support? Five business days | on request |
+| **Focused Audit** | Does one critical property — timing, determinism, concurrency — actually hold? Two to three weeks | on request |
+| **Due Diligence** | Is the technology what the company says it is, and what could break the investment? Three to four weeks | on request |
 
 Every engagement is carried out by the principal, start to finish, at a price
 fixed in writing before the work begins, and its revenue funds AxonOS, an
