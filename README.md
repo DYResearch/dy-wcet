@@ -13,7 +13,7 @@
 [![Licence](https://img.shields.io/badge/Apache--2.0%20OR%20MIT-475569?style=flat-square&labelColor=0e141d)](#licence)
 [![AxonOS Radar](https://img.shields.io/badge/AxonOS%20Radar-open%20neurotech%20map-1f8fae?style=flat-square&labelColor=0b1220)](https://axonos-bci.github.io/axonos-community-radar/)
 
-[The puzzle](#two-tasks-one-number) · [Quick start](#quick-start) · [Who it is for](#who-it-is-for) · [Refusals](#six-ways-to-say-no) · [Evidence](#the-evidence) · [Limits](#what-it-does-not-do) · [Engagements](#engagements)
+[The puzzle](#two-tasks-one-number) · [Quick start](#quick-start) · [Who it is for](#who-it-is-for) · [Refusals](#six-ways-to-say-no) · [Evidence](#the-evidence) · [Limits](#what-it-does-not-do) · [DY-WCET Pro](#dy-wcet-pro) · [Engagements](#engagements)
 
 </div>
 
@@ -378,6 +378,23 @@ recognised as outside it, rather than quietly analysed anyway.
 | **A busy period of at most 1024 jobs** | Past that it refuses rather than enumerating. A response spanning a thousand of a task's own periods is not an answer anybody checks |
 | **Sixteen tasks maximum** | Not a theoretical limit. It is the point past which a fixed-priority set on one core stops being checkable by hand, and an analysis nobody can check by hand is one nobody checks |
 | **It is not a qualified tool** | Under no safety standard, and it does not claim to be. Qualification evidence does not exist yet, and nothing here sells it |
+
+---
+
+## DY-WCET Pro
+
+This crate is open source and stays that way: every number it produces can be
+checked by anyone, with a pencil if need be.
+
+DY-WCET Pro is a commercial tool built on it, for teams that want the answer
+without writing Rust. A task list in `tasks.toml` or a spreadsheet export, three
+commands — `dywcet new`, `dywcet check`, `dywcet report` — and a report to file
+with the design review: whether every deadline holds, by how much, how much
+each task can still grow, and the priority order that fixes a set that misses.
+The report embeds its exact input with its `SHA-256`, and comes out the same,
+byte for byte, every time. It is not open source, and it is in early access.
+
+**[See DY-WCET Pro](https://dyresearch.github.io/wcet/pro/)** · [a real report](https://dyresearch.github.io/wcet/pro/sample.html)
 
 ---
 
