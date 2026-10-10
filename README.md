@@ -396,17 +396,17 @@ of delivery for the audit below, not a sample of one.
 **What you receive.** Two samples show the standard of every engagement: [a Focused Audit report](https://dyresearch.github.io/sample/dy-research-focused-audit-sample.pdf), fourteen pages on a robotic arm's joint controller, and [the investment-committee memo](https://dyresearch.github.io/sample/dy-research-ic-memo-sample.pdf) that closes a Due Diligence. Every engagement runs under a mutual non-disclosure agreement, signed before the first file, and nothing is published without the client's written consent: that is why the company in the samples is fictional.
 
 The arithmetic here is one piece of a practice. DY Research carries out
-fixed-price technical investigations, from a single timing question to full due
+technical investigations, each scoped in writing, from a single timing question to full due
 diligence, each ending in a written verdict on what the evidence supports.
 
-| | The question it answers | Price |
-|:--|:--|:--|
-| **Snapshot** | What does this technology actually do, and what does its evidence support? Five business days | on request |
-| **Focused Audit** | Does one critical property — timing, determinism, concurrency — actually hold? Two to three weeks | on request |
-| **Due Diligence** | Is the technology what the company says it is, and what could break the investment? Three to four weeks | on request |
+| | The question it answers |
+|:--|:--|
+| **Snapshot** | What does this technology actually do, and what does its evidence support? Five business days |
+| **Focused Audit** | Does one critical property — timing, determinism, concurrency — actually hold? Two to three weeks |
+| **Due Diligence** | Is the technology what the company says it is, and what could break the investment? Three to four weeks |
 
-Every engagement is carried out by the principal, start to finish, at a price
-fixed in writing before the work begins, and its revenue funds AxonOS, an
+Every engagement is carried out by the principal, start to finish, scoped in
+writing before the work begins, and its revenue funds AxonOS, an
 open-source deterministic systems layer for neurotechnology. What each one includes, what you
 receive and where it stops are set out in [`AUDIT.md`](AUDIT.md).
 [dyresearch.github.io](https://dyresearch.github.io) · [connect@axonos.org](mailto:connect@axonos.org)

@@ -133,13 +133,13 @@ AxonOS or builds on it, you are told at scoping, before you commit to anything.
 
 ## Terms
 
-- **Pricing on request, fixed in writing before any work begins.** Nothing is
+- **Scope and terms fixed in writing before any work begins.** Nothing is
   invoiced until the scope is agreed.
 - **Invoiced in USD or EUR.** Half on starting, half on delivery.
 - **Conflicts of interest are disclosed at scoping**, before either side has
   committed to anything.
-- **Expedited timelines on request**, quoted separately.
-- **Systems larger than a single product** are scoped and priced individually.
+- **Expedited timelines** are scoped separately.
+- **Systems larger than a single product** are scoped individually.
 
 If the question cannot be answered usefully, you hear that before you pay. If
 the problem turns out larger than it looked, you hear that before the work
@@ -160,7 +160,7 @@ neither does the invoice.
 ## Requesting an engagement
 
 Send the question in writing: what should be investigated, what you need to
-know, and when. No call is required. Scope and price come back in writing.
+know, and when. No call is required. The scope comes back in writing.
 
 - **Email** — [connect@axonos.org](mailto:connect@axonos.org)
 - **Web** — [dyresearch.github.io](https://dyresearch.github.io)
